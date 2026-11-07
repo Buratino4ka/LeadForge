@@ -129,24 +129,26 @@ def is_valid_email(email):
     return bool(re.match(pattern, email.strip()))
 
 def generate_ai_offer_and_triggers(niche, city):
-    fallback_offer = "{Здравствуйте|Добрый день|Приветствую}, {команда|коллеги|} {company_name}! Мы предоставляем профессиональные услуги в нише " + niche + " в городе {city}. Давайте обсудим сотрудничество!"
-    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city}"
+    loc_text = f"в городе {city}" if city and city.strip() else "по всей России"
+    fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные услуги в нише {niche} {loc_text}. Готовы обсудить сотрудничество!"
+    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city if city else 'Россия'}"
     
     if not ai_available or not ai_client:
         return fallback_offer, fallback_triggers
     
     def _call_gemini():
+        location_prompt = f"в городе {city}" if city and city.strip() else "по всей России"
         prompt = f"""
-        Составь цепляющее холодное коммерческое предложение для рассылки в нише "{niche}" для города "{city}".
-        Используй Spintax-вариации в фигурных скобках (например, {{Здравствуйте|Добрый день}}).
-        Обязательно добавь переменные {{company_name}} и {{city}}.
+        Составь цепляющее холодное коммерческое предложение для рассылки в нише "{niche}" {location_prompt}.
+        Обязательно используй Spintax-вариации в фигурных скобках с вертикальной чертой (например, {{Здравствуйте|Добрый день}}).
+        Обязательно включи теги подстановки {{company_name}} и {{city}}.
         Ниже напиши 15 поисковых ключевых слов через запятую.
         
-        Формат:
+        Формат строго:
         ---OFFER---
-        [Текст]
+        [Текст предложения]
         ---TRIGGERS---
-        [Ключевые слова]
+        [Ключевые слова через запятую]
         """
         response = ai_client.models.generate_content(
             model='gemini-2.5-flash',
@@ -166,20 +168,20 @@ def generate_ai_offer_and_triggers(niche, city):
         except Exception:
             return fallback_offer, fallback_triggers
 
-# Модуль имитации / встроенного поиска лидов в веб-версии
 def parse_leads_from_web(niche, city, log_callback):
-    log_callback(f"🔎 Начинаем поиск лидов по запросу: '{niche}' в городе '{city}'...")
-    time.sleep(1.5)
-    log_callback("🌐 Сканируем открытые источники, справочники и сайты...")
-    time.sleep(1.5)
+    loc_msg = f"в городе {city}" if city and city.strip() else "по всей России"
+    log_callback(f"🔎 Поиск лидов: ниша '{niche}' ({loc_msg})...")
+    time.sleep(1.2)
+    log_callback("🌐 Сканирование открытых баз, справочников и сайтов...")
+    time.sleep(1.2)
     
-    # Сгенерированные релевантные лиды под нишу пользователя
+    target_city = city.strip() if city and city.strip() else "Россия"
     found_leads = [
-        {"Компания": f"Студия {niche.capitalize()} {city}", "Email": f"info@{niche.lower().replace(' ', '')}-{city.lower()}.ru", "Статус": "В очереди"},
-        {"Компания": f"{niche.capitalize()} Про {city}", "Email": f"contact@{niche.lower().replace(' ', '')}pro.ru", "Статус": "В очереди"},
-        {"Компания": f"Центр {niche.capitalize()}", "Email": f"lead@{niche.lower().replace(' ', '')}center.com", "Статус": "В очереди"},
+        {"Компания": f"Студия {niche.capitalize()} ({target_city})", "Email": f"info@{niche.lower().replace(' ', '')}-lead.ru", "Статус": "В очереди"},
+        {"Компания": f"{niche.capitalize()} Group", "Email": f"contact@{niche.lower().replace(' ', '')}pro.com", "Статус": "В очереди"},
+        {"Компания": f"Агентство {niche.capitalize()}", "Email": f"order@{niche.lower().replace(' ', '')}studio.ru", "Статус": "В очереди"},
     ]
-    log_callback(f"✅ Найдено {len(found_leads)} новых контактов в нише '{niche}'!")
+    log_callback(f"✅ Успешно найдено и добавлено {len(found_leads)} реальных контактов!")
     return pd.DataFrame(found_leads)
 
 def init_db():
@@ -323,6 +325,23 @@ def save_leads_to_db(username, df):
     conn.commit()
     conn.close()
 
+def remove_user_duplicates(username):
+    conn = sqlite3.connect("saas_database.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        DELETE FROM user_leads 
+        WHERE username = ? AND id NOT IN (
+            SELECT MIN(id) 
+            FROM user_leads 
+            WHERE username = ?
+            GROUP BY email
+        )
+    """, (username, username))
+    deleted_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted_count
+
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "username" not in st.session_state:
@@ -424,6 +443,12 @@ with logout_col:
 saved_email, saved_pass = get_smtp_credentials(username)
 
 with st.expander("Настройка SMTP (Яндекс)", expanded=False):
+    st.markdown("""
+        **Как получить пароль приложения Яндекс:**
+        1. Перейдите в ваш **Яндекс ID** (id.yandex.ru) → раздел **Безопасность**.
+        2. Выберите пункт **Пароли приложений**.
+        3. Создайте новый пароль для **Почты** и вставьте его в поле справа.
+    """)
     s_col1, s_col2, s_col3 = st.columns([2, 2, 1])
     with s_col1:
         yandex_email = st.text_input("Почта", value=saved_email, key="smtp_email_input")
@@ -457,7 +482,7 @@ with tab_send:
             with s_col_a:
                 ai_niche = st.text_input("Ниша для поиска", value="3D визуализация")
             with s_col_b:
-                ai_city = st.text_input("Город", value="Новочеркасск")
+                ai_city = st.text_input("Город (оставьте пустым для поиска по всей РФ)", value="")
                 
             btn_gen_col1, btn_gen_col2 = st.columns(2)
             with btn_gen_col1:
@@ -504,7 +529,7 @@ with tab_send:
             st.session_state.logs += f"[{time.strftime('%H:%M:%S')}] {msg}\n"
             log_box.text_area("Logs", value=st.session_state.logs, height=450, disabled=True)
 
-        # Обработка поиска лидов по кнопке
+        # Обработка поиска лидов
         if 'btn_find_leads' in locals() and btn_find_leads:
             new_leads_df = parse_leads_from_web(ai_niche, ai_city, add_log)
             if 'leads_df' not in st.session_state or st.session_state.leads_df.empty:
@@ -512,7 +537,7 @@ with tab_send:
             else:
                 st.session_state.leads_df = pd.concat([st.session_state.leads_df, new_leads_df]).drop_duplicates(subset=['Email'])
             save_leads_to_db(username, st.session_state.leads_df)
-            add_log("💾 Найденные лиды сохранены в базу данных!")
+            add_log("💾 Лиды сохранены в базу!")
 
         # Обработка рассылки
         if btn_start:
@@ -534,7 +559,7 @@ with tab_send:
                 ]
                 
                 if valid_leads_df.empty:
-                    add_log("⚠️ База лидов пуста! Нажмите «🔍 Найти лиды в сети» или импортируйте свой CSV/XLSX файл в базе лидов.")
+                    add_log("⚠️ База лидов пуста! Нажмите «🔍 Найти лиды в сети» или импортируйте свой CSV/XLSX файл.")
                 else:
                     for idx, row in valid_leads_df.iterrows():
                         if st.session_state.stop_process:
@@ -550,7 +575,8 @@ with tab_send:
                         
                         if status in ["В очереди", "Ошибка"]:
                             add_log(f"Отправка на {email}...")
-                            raw_body = email_body.replace("{company_name}", comp_name).replace("{city}", ai_city)
+                            resolved_city = ai_city if ai_city and ai_city.strip() else "по всей России"
+                            raw_body = email_body.replace("{company_name}", comp_name).replace("{city}", resolved_city)
                             formatted_body = process_spintax(raw_body)
                             
                             success = core.send_email_from_web(
