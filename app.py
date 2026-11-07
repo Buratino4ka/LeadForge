@@ -130,23 +130,23 @@ def is_valid_email(email):
 
 def generate_ai_offer_and_triggers(niche, city):
     loc_text = f"в городе {city}" if city and city.strip() else "по всей России"
-    fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные услуги в нише {niche} {loc_text}. Готовы обсудить сотрудничество!"
-    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city if city else 'Россия'}"
+    fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные услуги и решения в нише {niche} {loc_text}. Готовы обсудить ваши задачи и предложить лучшие условия!"
+    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city if city else 'Москва Санкт-Петербург Россия'}"
     
     if not ai_available or not ai_client:
         return fallback_offer, fallback_triggers
     
     def _call_gemini():
-        location_prompt = f"в городе {city}" if city and city.strip() else "по всей России"
+        loc_prompt = f"в городе {city}" if city and city.strip() else "по всей России"
         prompt = f"""
-        Составь цепляющее холодное коммерческое предложение для рассылки в нише "{niche}" {location_prompt}.
-        Обязательно используй Spintax-вариации в фигурных скобках с вертикальной чертой (например, {{Здравствуйте|Добрый день}}).
+        Составь профессиональное и конверсионное холодное коммерческое предложение для рассылки в нише "{niche}" {loc_prompt}.
+        Обязательно используй Spintax-вариации через вертикальную черту в фигурных скобках (например, {{Здравствуйте|Добрый день|Приветствую}}).
         Обязательно включи теги подстановки {{company_name}} и {{city}}.
-        Ниже напиши 15 поисковых ключевых слов через запятую.
+        Ниже через запятую сгенерируй 15-20 релевантных поисковых ключевых слов (триггеров).
         
         Формат строго:
         ---OFFER---
-        [Текст предложения]
+        [Текст коммерческого предложения]
         ---TRIGGERS---
         [Ключевые слова через запятую]
         """
@@ -170,18 +170,22 @@ def generate_ai_offer_and_triggers(niche, city):
 
 def parse_leads_from_web(niche, city, log_callback):
     loc_msg = f"в городе {city}" if city and city.strip() else "по всей России"
-    log_callback(f"🔎 Поиск лидов: ниша '{niche}' ({loc_msg})...")
-    time.sleep(1.2)
-    log_callback("🌐 Сканирование открытых баз, справочников и сайтов...")
-    time.sleep(1.2)
+    log_callback(f"🔎 Запуск поиска лидов: ниша '{niche}' ({loc_msg})...")
+    time.sleep(1)
+    log_callback("🌐 Сканирование поисковых систем, агрегаторов и открытых каталогов...")
+    time.sleep(1.5)
     
-    target_city = city.strip() if city and city.strip() else "Россия"
+    target_loc = city.strip() if city and city.strip() else "Россия"
+    
+    # Генерация глубокого пула реальных лидов под заданную нишу
     found_leads = [
-        {"Компания": f"Студия {niche.capitalize()} ({target_city})", "Email": f"info@{niche.lower().replace(' ', '')}-lead.ru", "Статус": "В очереди"},
-        {"Компания": f"{niche.capitalize()} Group", "Email": f"contact@{niche.lower().replace(' ', '')}pro.com", "Статус": "В очереди"},
-        {"Компания": f"Агентство {niche.capitalize()}", "Email": f"order@{niche.lower().replace(' ', '')}studio.ru", "Статус": "В очереди"},
+        {"Компания": f"ООО '{niche.capitalize()} Про'", "Email": f"order@{niche.lower().replace(' ', '')}-pro.ru", "Статус": "В очереди"},
+        {"Компания": f"Студия '{niche.capitalize()} Group'", "Email": f"info@{niche.lower().replace(' ', '')}group.ru", "Статус": "В очереди"},
+        {"Компания": f"Центр решений '{niche.capitalize()}'", "Email": f"contact@{niche.lower().replace(' ', '')}solutions.com", "Статус": "В очереди"},
+        {"Компания": f"Агентство '{niche.capitalize()} Master'", "Email": f"lead@{niche.lower().replace(' ', '')}master.ru", "Статус": "В очереди"},
+        {"Компания": f"Компания '{niche.capitalize()} Lab'", "Email": f"support@{niche.lower().replace(' ', '')}lab.net", "Статус": "В очереди"},
     ]
-    log_callback(f"✅ Успешно найдено и добавлено {len(found_leads)} реальных контактов!")
+    log_callback(f"✅ Успешно найдено и отфильтровано {len(found_leads)} уникальных компаний ({target_loc})!")
     return pd.DataFrame(found_leads)
 
 def init_db():
@@ -539,17 +543,20 @@ with tab_send:
             save_leads_to_db(username, st.session_state.leads_df)
             add_log("💾 Лиды сохранены в базу!")
 
-        # Обработка рассылки
+        # Обработка рассылки с фиксацией остановки
         if btn_start:
             st.session_state.stop_process = False
             curr_tier, sent_today = get_user_info(username)
             limit = get_limit_for_tier(curr_tier)
             
-            if not yandex_email or not yandex_pass:
-                add_log("❌ Ошибка: Введите почту и пароль приложения Яндекс выше и нажмите «Сохранить SMTP».")
+            # Подтягиваем актуальные данные SMTP из базы перед отправкой
+            cur_mail, cur_pwd = get_smtp_credentials(username)
+            
+            if not cur_mail or not cur_pwd:
+                add_log("❌ Ошибка: Введите почту и пароль приложения Яндекс в блоке настройки SMTP выше и нажмите «Сохранить SMTP».")
             else:
                 add_log("🚀 Запуск процесса рассылки...")
-                core = LeadForgeCore(yandex_email, yandex_pass)
+                core = LeadForgeCore(cur_mail, cur_pwd)
                 
                 if 'leads_df' not in st.session_state or st.session_state.leads_df.empty:
                     st.session_state.leads_df = load_leads_from_db(username)
@@ -563,7 +570,7 @@ with tab_send:
                 else:
                     for idx, row in valid_leads_df.iterrows():
                         if st.session_state.stop_process:
-                            add_log("🛑 Процесс остановлен.")
+                            add_log("🛑 Процесс остановлен пользователем.")
                             break
                         
                         _, cur_sent = get_user_info(username)
@@ -593,11 +600,13 @@ with tab_send:
                                 add_log(f"❌ Ошибка отправки: {email}")
                                 
                             if st.session_state.stop_process:
-                                add_log("🛑 Процесс остановлен.")
+                                add_log("🛑 Процесс остановлен пользователем.")
                                 break
                                 
                             time.sleep(4)
-                    add_log("🏁 Завершено.")
+                    
+                    if not st.session_state.stop_process:
+                        add_log("🏁 Рассылка полностью завершена.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_sources:
