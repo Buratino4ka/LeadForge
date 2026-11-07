@@ -440,13 +440,15 @@ if not st.session_state.authenticated:
     
     _, col_center, _ = st.columns([1, 1.2, 1])
     with col_center:
+        # Аккуратный прямоугольник с описанием платформы вместо лишних полей
         st.markdown("""
-            <div style="text-align: center; margin-bottom: 20px;">
+            <div style="background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.95)); border: 1px solid rgba(16, 185, 129, 0.3); padding: 16px 20px; border-radius: 16px; text-align: center; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
                 <span style="color: #34d399; font-size: 1.05rem; font-weight: 700;">LeadForge SaaS Platform</span><br>
-                <span style="color: #94a3b8; font-size: 0.85rem;">Автоматизированный поиск лидов и генерация рассылок</span>
+                <span style="color: #94a3b8; font-size: 0.85rem; margin-top: 4px; display: block;">Автоматизированный поиск лидов и генерация рассылок</span>
             </div>
         """, unsafe_allow_html=True)
         
+        # Единая стильная карточка для формы входа/регистрации
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
         auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
