@@ -436,15 +436,15 @@ if "success" in query_params and query_params["success"] == "true":
 
 # --- АВТОРИЗАЦИЯ ---
 if not st.session_state.authenticated:
-    st.markdown("<h1 style='text-align: center; margin-top: 30px; font-weight: 800; background: linear-gradient(135deg, #34d399, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>LeadForge</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; margin-top: 20px; font-weight: 800; background: linear-gradient(135deg, #34d399, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>LeadForge</h1>", unsafe_allow_html=True)
     
     _, col_center, _ = st.columns([1, 1.2, 1])
     with col_center:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.markdown("""
-            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); padding: 12px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
-                <span style="color: #34d399; font-size: 0.9rem; font-weight: 600;">Автоматизированная SaaS-платформа</span><br>
-                <span style="color: #94a3b8; font-size: 0.8rem;">для поиска лидов и генерации рассылок</span>
+            <div style="text-align: center; margin-bottom: 22px;">
+                <span style="color: #34d399; font-size: 1.05rem; font-weight: 700;">LeadForge SaaS Platform</span><br>
+                <span style="color: #94a3b8; font-size: 0.85rem;">Автоматизированный поиск лидов и генерация рассылок</span>
             </div>
         """, unsafe_allow_html=True)
         
