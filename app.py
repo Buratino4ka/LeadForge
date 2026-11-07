@@ -617,27 +617,49 @@ with tab_send:
                 st.error("Заполните SMTP настройки")
             else:
                 core = LeadForgeCore(yandex_email, yandex_pass)
-                for idx, row in st.session_state.leads_df.iterrows():
+                
+                # Фильтрация валидных лидов (без тестовых example.com и дублей некорректных почт)
+                valid_leads_df = st.session_state.leads_df[
+                    st.session_state.leads_df['Email'].apply(is_valid_email) & 
+                    (~st.session_state.leads_df['Email'].str.contains('example.com', case=False, na=False))
+                ]
+                
+                for idx, row in valid_leads_df.iterrows():
+                    # Быстрая проверка флага остановки
                     if st.session_state.stop_process:
-                        add_log("Остановлено.")
+                        add_log("🛑 Процесс остановлен пользователем.")
                         break
+                    
                     _, cur_sent = get_user_info(username)
                     if cur_sent >= limit:
-                        add_log("Достигнут дневной лимит.")
+                        add_log("⚠️ Достигнут дневной лимит.")
                         break
+                        
                     email, status, comp_name = str(row.get("Email", "")), str(row.get("Статус", "")), str(row.get("Компания", "партнер"))
-                    if "@" not in email:
-                        continue
+                    
                     if status in ["В очереди", "Ошибка"]:
                         add_log(f"Отправка: {email}...")
                         raw_body = email_body.replace("{company_name}", comp_name).replace("{city}", ai_city)
                         formatted_body = process_spintax(raw_body)
-                        success = core.send_email_from_web(to_email=email, subject=subject, body_text=formatted_body, file_bytes=file_bytes, file_name=file_name, log_callback=add_log)
+                        
+                        success = core.send_email_from_web(
+                            to_email=email, subject=subject, body_text=formatted_body, 
+                            file_bytes=file_bytes, file_name=file_name, log_callback=add_log
+                        )
+                        
+                        # Обновляем статус в основной таблице по индексу исходного датафрейма
                         st.session_state.leads_df.at[idx, "Статус"] = "Отправлено" if success else "Ошибка"
                         save_leads_to_db(username, st.session_state.leads_df)
                         if success:
                             increment_sent_count(username)
-                        time.sleep(2)
+                            
+                        # Повторная проверка перед паузой для мгновенного отклика на кнопку Стоп
+                        if st.session_state.stop_process:
+                            add_log("🛑 Процесс остановлен пользователем.")
+                            break
+                            
+                        # Безопасная пауза 4 секунды для защиты от спам-фильтров Яндекса
+                        time.sleep(4)
         st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_sources:
