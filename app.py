@@ -5,6 +5,10 @@ import time
 import hashlib
 import secrets
 import re
+import ssl
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import concurrent.futures
 from datetime import datetime
 from yookassa import Configuration, Payment
@@ -251,19 +255,50 @@ def get_limit_for_tier(tier):
     conn.close()
     return row[0] if row else 3
 
+def send_verification_email(to_email, token):
+    try:
+        sender_email = "denisastak@yandex.ru"
+        sender_pass = "lacpykduxmmgtige"
+        verify_url = f"https://leadforge-app.streamlit.app/?verify_token={token}"
+        
+        msg = MIMEMultipart()
+        msg["From"] = sender_email
+        msg["To"] = to_email
+        msg["Subject"] = "Подтверждение регистрации в LeadForge"
+        
+        body = f"Здравствуйте!\n\nДля активации вашего аккаунта в LeadForge перейдите по ссылке:\n{verify_url}\n\nЕсли вы не регистрировались, просто проигнорируйте это письмо."
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.yandex.ru", 465, context=context) as server:
+            server.login(sender_email, sender_pass)
+            server.sendmail(sender_email, [to_email], msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Ошибка отправки письма: {e}")
+        return False
+
 def register_user(username, password, email):
     conn = sqlite3.connect("saas_database.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
+    cursor.execute("SELECT username FROM users WHERE username = ? OR email = ?", (username, email))
     if cursor.fetchone():
         conn.close()
-        return False, "Пользователь уже существует"
+        return False, "Пользователь или email уже зарегистрирован"
+    
     today_str = datetime.now().strftime("%Y-%m-%d")
     hashed_pw = hash_password(password)
-    cursor.execute("INSERT INTO users (username, password, email, tier, sent_today, last_reset_date, is_verified, is_blocked) VALUES (?, ?, ?, ?, ?, ?, 1, 0)", (username, hashed_pw, email, "free", 0, today_str))
+    verify_token = secrets.token_urlsafe(32)
+    
+    cursor.execute("""
+        INSERT INTO users (username, password, email, tier, sent_today, last_reset_date, is_verified, is_blocked, reset_token) 
+        VALUES (?, ?, ?, 'free', 0, ?, 0, 0, ?)
+    """, (username, hashed_pw, email, today_str, verify_token))
     conn.commit()
     conn.close()
-    return True, "Успешно"
+    
+    send_verification_email(email, verify_token)
+    return True, "Успешно! Проверьте почту для подтверждения аккаунта."
 
 def get_user_info(username):
     if username == "admin":
@@ -337,7 +372,7 @@ def remove_user_duplicates(username):
     conn.close()
     return deleted_count
 
-# --- СЕССИЯ ---
+# --- СЕССИЯ И ПАРАМЕТРЫ URL ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "username" not in st.session_state:
@@ -350,6 +385,24 @@ if "stop_process" not in st.session_state:
     st.session_state.stop_process = False
 
 query_params = st.query_params
+
+# Обработка верификации email по ссылке
+if "verify_token" in query_params:
+    v_token = query_params["verify_token"]
+    conn = sqlite3.connect("saas_database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM users WHERE reset_token = ?", (v_token,))
+    res = cursor.fetchone()
+    if res:
+        cursor.execute("UPDATE users SET is_verified = 1, reset_token = NULL WHERE reset_token = ?", (v_token,))
+        conn.commit()
+        conn.close()
+        st.success("✅ Email успешно подтвержден! Теперь вы можете войти в систему.")
+    else:
+        st.error("❌ Недействительная или устаревшая ссылка подтверждения.")
+    conn.close()
+    st.stop()
+
 if "reset_token" in query_params:
     token = query_params["reset_token"]
     st.markdown("<h2 style='text-align: center;'>Сброс пароля</h2>", unsafe_allow_html=True)
@@ -405,12 +458,14 @@ if not st.session_state.authenticated:
                         st.rerun()
                     conn = sqlite3.connect("saas_database.db")
                     cursor = conn.cursor()
-                    cursor.execute("SELECT password, is_blocked FROM users WHERE username = ?", (l_user,))
+                    cursor.execute("SELECT password, is_blocked, is_verified FROM users WHERE username = ?", (l_user,))
                     row = cursor.fetchone()
                     conn.close()
                     if row and row[0] == hash_password(l_pass):
                         if row[1] == 1:
                             st.error("Аккаунт заблокирован")
+                        elif row[2] == 0:
+                            st.error("Пожалуйста, подтвердите ваш email (проверьте почту).")
                         else:
                             st.session_state.authenticated = True
                             st.session_state.username = l_user
@@ -428,10 +483,7 @@ if not st.session_state.authenticated:
                     if r_user and r_pass and r_email:
                         success, msg = register_user(r_user, r_pass, r_email)
                         if success:
-                            st.session_state.authenticated = True
-                            st.session_state.username = r_user
-                            st.session_state.leads_df = load_leads_from_db(r_user)
-                            st.rerun()
+                            st.success(msg)
                         else:
                             st.error(msg)
                     else:
@@ -454,7 +506,7 @@ if not st.session_state.authenticated:
                             cursor.execute("UPDATE users SET reset_token = ? WHERE email = ?", (token, f_email))
                             conn.commit()
                             conn.close()
-                            st.success(f"Ссылка: ?reset_token={token}")
+                            st.success(f"Ссылка для сброса: ?reset_token={token}")
                         else:
                             st.error("Email не найден")
                     else:
@@ -620,7 +672,6 @@ with tab_send:
             else:
                 core = LeadForgeCore(yandex_email, yandex_pass)
                 
-                # Фильтрация валидных лидов (исключение тестовых example.com)
                 valid_leads_df = st.session_state.leads_df[
                     st.session_state.leads_df['Email'].apply(is_valid_email) & 
                     (~st.session_state.leads_df['Email'].str.contains('example.com', case=False, na=False))
@@ -657,7 +708,6 @@ with tab_send:
                             add_log("🛑 Процесс остановлен пользователем.")
                             break
                             
-                        # Безопасная пауза 4 секунды для защиты от спам-фильтров Яндекса
                         time.sleep(4)
         st.markdown('</div>', unsafe_allow_html=True)
 
