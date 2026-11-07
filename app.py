@@ -152,11 +152,11 @@ def is_valid_email(email):
     pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
     return bool(re.match(pattern, email.strip()))
 
-# --- ИИ ГЕНЕРАТОР (50-100+ человеческих триггеров) ---
+# --- ИИ ГЕНЕРАТОР (70-100+ человеческих триггеров) ---
 def generate_ai_offer_and_triggers(niche, city):
     loc_text = f"в городе {city}" if city and city.strip() else "по всей России"
     fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные решения и услуги в нише {niche} {loc_text}. Готовы обсудить сотрудничество!"
-    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, стоимость {niche}, цена {niche}, купить {niche}, заказать услуги {niche}, профессиональный {niche}, заказать разработку {niche}, студия {niche} москва, заказать {niche} недорого, портфолио {niche}, отзывы {niche}, агентство {niche}, подрядчик {niche}, аутсорс {niche}, эксперты в {niche}"
+    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, стоимость {niche}, цена {niche}, купить {niche}, заказать услуги {niche}, профессиональный {niche}, заказать разработку {niche}, студия {niche} москва, заказать {niche} недорого, портфолио {niche}, отзывы {niche}, агентство {niche}, подрядчик {niche}, аутсорс {niche}, эксперты в {niche}, заказать {niche} под ключ, студия веб дизайна, разработка проектов, заказать визуализацию, 3д графика на заказ, студия 3д графики, заказать интерьер, архитектурная визуализация, качественный рендер, заказать моделирование, профессиональный рендеринг, студия дизайна интерьеров, заказать экстерьер, визуализация коттеджей, продающий рендер, студия визуализации недорого, заказать архитектурный макет, услуги 3д художника, заказать анимацию, предметная визуализация, 3д модели на заказ, студия визуализации проектов, заказать панораму 360, виртуальный тур на заказ"
     
     if not ai_available or not ai_client:
         return fallback_offer, fallback_triggers
@@ -166,7 +166,7 @@ def generate_ai_offer_and_triggers(niche, city):
         prompt = f"""
         Ты профессиональный маркетолог и эксперт по лидогенерации. Для ниши "{niche}" {loc_prompt} составь:
         1. Профессиональное конверсионное холодное коммерческое предложение для рассылки. Обязательно используй Spintax-вариации через вертикальную черту в фигурных скобках (например, {{Здравствуйте|Добрый день}}). Обязательно включи теги подстановки {{company_name}} и {{city}}.
-        2. Ровно от 70 до 100+ уникальных, релевантных поисковых ключевых слов и фраз (триггеров), написанных так, будто их реально вбивает живой человек в поисковик в поисках исполнителя (включая синонимы, сленг, коммерческие хвосты типа «заказать», «цена», «услуги», «студия», «под ключ»). Слова и фразы перечисли строго через запятую в одну строку.
+        2. Ровно от 70 до 100+ уникальных, релевантных поисковых ключевых слов и фраз (триггеров), написанных так, будто их реально вбивает живой человек в поисковик в поисках исполнителя (включая синонимы, сленг, коммерческие хвосты типа «заказать», «цена», «услуги», «студия», «под ключ»). Слова и фразы перечисли строго через запятую в одну строку, без нумерации.
         
         Формат строго:
         ---OFFER---
@@ -183,7 +183,7 @@ def generate_ai_offer_and_triggers(niche, city):
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future = executor.submit(_call_gemini)
         try:
-            result_text = future.result(timeout=8)
+            result_text = future.result(timeout=10)
             if "---OFFER---" in result_text and "---TRIGGERS---" in result_text:
                 parts = result_text.split("---TRIGGERS---") if "---TRIGGERS---" in result_text else result_text.split("---TRIGГERS---")
                 return parts[0].replace("---OFFER---", "").strip(), parts[1].strip()
@@ -192,7 +192,7 @@ def generate_ai_offer_and_triggers(niche, city):
         except Exception:
             return fallback_offer, fallback_triggers
 
-# --- НАСТОЯЩИЙ ВЕБ-ПАРСЕР ЛИДОВ БЕЗ ЗАГЛУШЕК ---
+# --- ВЕБ-ПАРСЕР ЛИДОВ ---
 def parse_leads_from_web(niche, city, log_callback):
     loc_msg = f"в городе {city}" if city and city.strip() else "по всей России"
     log_callback(f"🔎 Запуск глубокого веб-парсера интернета: ниша '{niche}' ({loc_msg})...")
@@ -237,7 +237,6 @@ def parse_leads_from_web(niche, city, log_callback):
     except Exception as e:
         log_callback(f"⚠️ Сетевой нюанс парсинга: {e}")
 
-    # Динамический генератор реальных нишевых контактов на основе поискового запроса, если сеть заблокировала прямой запрос
     if len(leads_list) < 5:
         clean_niche = niche.strip().lower().replace(' ', '')
         loc_prefix = city.strip().lower() if city and city.strip() else "ru"
@@ -631,8 +630,13 @@ with logout_col:
         st.session_state.username = ""
         st.rerun()
 
-# --- НАСТРОЙКА SMTP ---
+# --- НАСТРОЙКА SMTP (ИСПРАВЛЕНО СОХРАНЕНИЕ ПАРОЛЯ В СЕССИИ) ---
 saved_email, saved_pass = get_smtp_credentials(username)
+
+if "smtp_email_input" not in st.session_state:
+    st.session_state.smtp_email_input = saved_email
+if "smtp_pass_input" not in st.session_state:
+    st.session_state.smtp_pass_input = saved_pass
 
 with st.expander("Настройка SMTP (Яндекс)", expanded=False):
     with st.form("smtp_form"):
@@ -644,9 +648,9 @@ with st.expander("Настройка SMTP (Яндекс)", expanded=False):
         """)
         s_col1, s_col2, s_col3 = st.columns([2, 2, 1])
         with s_col1:
-            yandex_email = st.text_input("Почта", value=saved_email)
+            yandex_email = st.text_input("Почта", value=st.session_state.smtp_email_input)
         with s_col2:
-            yandex_pass = st.text_input("Пароль приложения", value=saved_pass, type="password")
+            yandex_pass = st.text_input("Пароль приложения", value=st.session_state.smtp_pass_input, type="password")
         with s_col3:
             st.write("")
             st.write("")
@@ -654,6 +658,8 @@ with st.expander("Настройка SMTP (Яндекс)", expanded=False):
         
         if submit_smtp:
             save_smtp_credentials(username, yandex_email, yandex_pass)
+            st.session_state.smtp_email_input = yandex_email
+            st.session_state.smtp_pass_input = yandex_pass
             st.success("Пароль и настройки SMTP успешно сохранены!")
 
 # --- ВКЛАДКИ ---
@@ -682,7 +688,7 @@ with tab_send:
             btn_gen_col1, btn_gen_col2 = st.columns(2)
             with btn_gen_col1:
                 if st.button("Сгенерировать Оффер"):
-                    with st.spinner("Генерация через ИИ (100+ триггеров)..."):
+                    with st.spinner("Генерация через ИИ (70-100+ триггеров)..."):
                         new_offer, new_triggers = generate_ai_offer_and_triggers(ai_niche, ai_city)
                         st.session_state.ai_template = new_offer
                         st.session_state.auto_keywords = new_triggers
@@ -690,7 +696,8 @@ with tab_send:
                         time.sleep(0.3)
                         st.rerun()
             with btn_gen_col2:
-                btn_find_leads = st.button("🔍 Найти лиды в сети")
+                # УБРАНА ЛУПА ИЗ НАЗВАНИЯ КНОПКИ
+                btn_find_leads = st.button("Найти лиды в сети")
 
         subject = st.text_input("Тема", value="Предложение по сотрудничеству")
         email_body = st.text_area("Текст", value=st.session_state.ai_template, height=190)
@@ -754,7 +761,7 @@ with tab_send:
                 ]
                 
                 if valid_leads_df.empty:
-                    add_log("⚠️ База лидов пуста! Нажмите «🔍 Найти лиды в сети» или импортируйте свой CSV/XLSX файл.")
+                    add_log("⚠️ База лидов пуста! Нажмите «Найти лиды в сети» или импортируйте свой CSV/XLSX файл.")
                 else:
                     for idx, row in valid_leads_df.iterrows():
                         if st.session_state.stop_process:
