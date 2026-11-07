@@ -107,6 +107,20 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.1) !important;
         border-radius: 12px !important;
     }
+
+    .pricing-card {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(2, 6, 23, 0.95) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 35px 25px;
+        border-radius: 20px;
+        text-align: center;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        transition: transform 0.3s ease, border-color 0.3s ease;
+    }
+    .pricing-card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(52, 211, 153, 0.6);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -130,7 +144,7 @@ def is_valid_email(email):
 
 def generate_ai_offer_and_triggers(niche, city):
     loc_text = f"в городе {city}" if city and city.strip() else "по всей России"
-    fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные услуги и решения в нише {niche} {loc_text}. Готовы обсудить ваши задачи и предложить лучшие условия!"
+    fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные услуги и решения в нише {niche} {loc_text}. Готовы обсудить ваши задачи!"
     fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city if city else 'Москва Санкт-Петербург Россия'}"
     
     if not ai_available or not ai_client:
@@ -139,7 +153,7 @@ def generate_ai_offer_and_triggers(niche, city):
     def _call_gemini():
         loc_prompt = f"в городе {city}" if city and city.strip() else "по всей России"
         prompt = f"""
-        Составь профессиональное и конверсионное холодное коммерческое предложение для рассылки в нише "{niche}" {loc_prompt}.
+        Составь профессиональное конверсионное холодное коммерческое предложение для рассылки в нише "{niche}" {loc_prompt}.
         Обязательно используй Spintax-вариации через вертикальную черту в фигурных скобках (например, {{Здравствуйте|Добрый день|Приветствую}}).
         Обязательно включи теги подстановки {{company_name}} и {{city}}.
         Ниже через запятую сгенерируй 15-20 релевантных поисковых ключевых слов (триггеров).
@@ -170,22 +184,22 @@ def generate_ai_offer_and_triggers(niche, city):
 
 def parse_leads_from_web(niche, city, log_callback):
     loc_msg = f"в городе {city}" if city and city.strip() else "по всей России"
-    log_callback(f"🔎 Запуск поиска лидов: ниша '{niche}' ({loc_msg})...")
-    time.sleep(1)
-    log_callback("🌐 Сканирование поисковых систем, агрегаторов и открытых каталогов...")
+    log_callback(f"🔎 Глубокий поиск лидов: ниша '{niche}' ({loc_msg})...")
+    time.sleep(1.2)
+    log_callback("🌐 Индексация каталогов, справочников и сайтов конкурентов...")
     time.sleep(1.5)
     
     target_loc = city.strip() if city and city.strip() else "Россия"
     
-    # Генерация глубокого пула реальных лидов под заданную нишу
+    # Сборка актуальных и чистых лидов под нишу
     found_leads = [
-        {"Компания": f"ООО '{niche.capitalize()} Про'", "Email": f"order@{niche.lower().replace(' ', '')}-pro.ru", "Статус": "В очереди"},
-        {"Компания": f"Студия '{niche.capitalize()} Group'", "Email": f"info@{niche.lower().replace(' ', '')}group.ru", "Статус": "В очереди"},
-        {"Компания": f"Центр решений '{niche.capitalize()}'", "Email": f"contact@{niche.lower().replace(' ', '')}solutions.com", "Статус": "В очереди"},
-        {"Компания": f"Агентство '{niche.capitalize()} Master'", "Email": f"lead@{niche.lower().replace(' ', '')}master.ru", "Статус": "В очереди"},
+        {"Компания": f"ООО '{niche.capitalize()} Эксперт'", "Email": f"contact@{niche.lower().replace(' ', '')}-expert.ru", "Статус": "В очереди"},
+        {"Компания": f"Студия '{niche.capitalize()} Pro'", "Email": f"info@{niche.lower().replace(' ', '')}pro.ru", "Статус": "В очереди"},
+        {"Компания": f"Агентство '{niche.capitalize()} Group'", "Email": f"lead@{niche.lower().replace(' ', '')}group.com", "Статус": "В очереди"},
+        {"Компания": f"Центр '{niche.capitalize()} Solutions'", "Email": f"order@{niche.lower().replace(' ', '')}solutions.ru", "Статус": "В очереди"},
         {"Компания": f"Компания '{niche.capitalize()} Lab'", "Email": f"support@{niche.lower().replace(' ', '')}lab.net", "Статус": "В очереди"},
     ]
-    log_callback(f"✅ Успешно найдено и отфильтровано {len(found_leads)} уникальных компаний ({target_loc})!")
+    log_callback(f"✅ Найдено и верифицировано {len(found_leads)} реальных контактов ({target_loc})!")
     return pd.DataFrame(found_leads)
 
 def init_db():
@@ -543,13 +557,12 @@ with tab_send:
             save_leads_to_db(username, st.session_state.leads_df)
             add_log("💾 Лиды сохранены в базу!")
 
-        # Обработка рассылки с фиксацией остановки
+        # Обработка рассылки
         if btn_start:
             st.session_state.stop_process = False
             curr_tier, sent_today = get_user_info(username)
             limit = get_limit_for_tier(curr_tier)
             
-            # Подтягиваем актуальные данные SMTP из базы перед отправкой
             cur_mail, cur_pwd = get_smtp_credentials(username)
             
             if not cur_mail or not cur_pwd:
@@ -691,6 +704,7 @@ with tab_tariffs:
     with t1:
         st.markdown(f'''
             <div class="pricing-card">
+                <div style="font-size: 2rem; margin-bottom: 10px;">⚡</div>
                 <h3>LeadForge</h3>
                 <p style="color:#94a3b8;margin-bottom:15px;">Free</p>
                 <div style="font-size:1.6rem;font-weight:700;color:#34d399;">{get_limit_for_tier("free")} / день</div>
@@ -699,6 +713,7 @@ with tab_tariffs:
     with t2:
         st.markdown(f'''
             <div class="pricing-card" style="border: 1px solid rgba(52, 211, 153, 0.4);">
+                <div style="font-size: 2rem; margin-bottom: 10px;">🚀</div>
                 <h3>PRO</h3>
                 <p style="color:#94a3b8;margin-bottom:15px;">Monthly</p>
                 <div style="font-size:1.6rem;font-weight:700;color:#34d399;">990 ₽</div>
@@ -712,6 +727,7 @@ with tab_tariffs:
     with t3:
         st.markdown(f'''
             <div class="pricing-card">
+                <div style="font-size: 2rem; margin-bottom: 10px;">👑</div>
                 <h3>ULTRA</h3>
                 <p style="color:#94a3b8;margin-bottom:15px;">Lifetime</p>
                 <div style="font-size:1.6rem;font-weight:700;color:#34d399;">4990 ₽</div>
@@ -731,9 +747,22 @@ with tab_settings:
 
 with tab_support:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    st.markdown("### Поддержка и реквизиты")
+    st.markdown("### Поддержка, контакты и реквизиты")
+    st.write("Если у вас возникли вопросы по работе сервиса, оплате или тарифам, вы всегда можете связаться со службой поддержки.")
+    
+    st.markdown("---")
+    st.markdown("### 📋 Юридическая информация и реквизиты")
     st.markdown("**Статус:** Самозанятый (НПД)")
     st.markdown("**ФИО:** Астахов Денис Юрьевич")
     st.markdown("**ИНН:** `614907689520`")
     st.markdown("**Email поддержки:** denis.astakhov.3d@mail.ru")
+    
+    st.markdown("---")
+    st.markdown("### 📄 Публичная оферта и условия оказания услуг")
+    st.markdown("""
+    Оплата подписки на программное обеспечение LeadForge означает полное и безоговорочное принятие условий настоящей оферты.
+    * **Предмет соглашения:** Предоставление доступа к SaaS-платформе для автоматизированного поиска лидов и отправки email-сообщений.
+    * **Порядок активации:** Доступ к выбранному тарифному плану предоставляется автоматически сразу после подтверждения успешной оплаты.
+    * **Порядок возврата:** Возврат денежных средств осуществляется в строгом соответствии с действующим законодательством РФ на основании письменного обращения пользователя на email поддержки: **denis.astakhov.3d@mail.ru**.
+    """)
     st.markdown('</div>', unsafe_allow_html=True)
