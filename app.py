@@ -173,7 +173,7 @@ def generate_ai_offer_and_triggers(niche, city):
     fallback_offer = "{Здравствуйте|Добрый день|Приветствую}, {команда|коллеги|} {company_name}! Предлагаем услуги по направлению " + niche + " в городе {city}."
     fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} в городе {city}"
     
-    if not ai_available:
+    if not ai_available or not ai_client:
         return fallback_offer, fallback_triggers
     
     def _call_gemini():
@@ -338,12 +338,14 @@ def load_leads_from_db(username):
     df = pd.read_sql("SELECT channel AS 'Компания', email AS 'Email', status AS 'Статус' FROM user_leads WHERE username = ?", conn, params=(username,))
     conn.close()
     if df.empty:
-        df = pd.DataFrame([{"Компания": "Пример", "Email": "client@example.com", "Статус": "В очереди"}])
+        df = pd.DataFrame(columns=["Компания", "Email", "Статус"])
     return df
 
 def save_leads_to_db(username, df):
     conn = sqlite3.connect("saas_database.db")
     cursor = conn.cursor()
+    # Сначала очистим старые лиды пользователя перед перезаписью актуальных из таблицы (для поддержки удаления)
+    cursor.execute("DELETE FROM user_leads WHERE username = ?", (username,))
     for _, row in df.iterrows():
         email_val = str(row.get("Email", "")).strip()
         if not is_valid_email(email_val):
@@ -440,7 +442,6 @@ if not st.session_state.authenticated:
     
     _, col_center, _ = st.columns([1, 1.2, 1])
     with col_center:
-        # Аккуратный прямоугольник с описанием платформы вместо лишних полей
         st.markdown("""
             <div style="background: linear-gradient(145deg, rgba(15, 23, 42, 0.9), rgba(2, 6, 23, 0.95)); border: 1px solid rgba(16, 185, 129, 0.3); padding: 16px 20px; border-radius: 16px; text-align: center; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
                 <span style="color: #34d399; font-size: 1.05rem; font-weight: 700;">LeadForge SaaS Platform</span><br>
@@ -448,7 +449,6 @@ if not st.session_state.authenticated:
             </div>
         """, unsafe_allow_html=True)
         
-        # Единая стильная карточка для формы входа/регистрации
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
         auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
@@ -739,12 +739,14 @@ with tab_crm:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown("### База лидов")
     
-    if st.button("Удалить дубликаты"):
-        deleted = remove_user_duplicates(username)
-        st.session_state.leads_df = load_leads_from_db(username)
-        st.success(f"Удалено: {deleted}")
-        time.sleep(1)
-        st.rerun()
+    rc1, rc2 = st.columns([1, 4])
+    with rc1:
+        if st.button("Удалить дубликаты"):
+            deleted = remove_user_duplicates(username)
+            st.session_state.leads_df = load_leads_from_db(username)
+            st.success(f"Удалено: {deleted}")
+            time.sleep(1)
+            st.rerun()
 
     up_leads = st.file_uploader("Импорт CSV / XLSX", type=["csv", "xlsx"])
     if up_leads:
@@ -764,9 +766,20 @@ with tab_crm:
             pass
 
     st.divider()
-    edited_df = st.data_editor(st.session_state.leads_df, num_rows="dynamic", use_container_width=True, hide_index=True, height=330)
+    st.markdown("<p style='color:#94a3b8; font-size:0.85rem;'>Вы можете выделять ненужные строки в таблице и удалять их кнопкой Delete на клавиатуре или через контекстное меню таблицы.</p>", unsafe_allow_html=True)
+    
+    # Таблица лидов с поддержкой удаления строк
+    edited_df = st.data_editor(
+        st.session_state.leads_df, 
+        num_rows="dynamic", 
+        use_container_width=True, 
+        hide_index=True, 
+        height=350,
+        key="lead_editor"
+    )
     st.session_state.leads_df = edited_df
     save_leads_to_db(username, st.session_state.leads_df)
+    
     st.download_button("Экспорт CSV", st.session_state.leads_df.to_csv(index=False).encode('utf-8'), f"leads_{username}.csv", "text/csv")
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -776,9 +789,9 @@ with tab_analytics:
     df_l = st.session_state.leads_df
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Всего", len(df_l))
-    m2.metric("Отправлено", len(df_l[df_l['Статус'] == 'Отправлено']) if 'Статус' in df_l.columns else 0)
-    m3.metric("Просмотрено", len(df_l[df_l['Статус'] == 'Просмотрено']) if 'Статус' in df_l.columns else 0)
-    m4.metric("Кликнули", len(df_l[df_l['Статус'] == 'Кликнул']) if 'Статус' in df_l.columns else 0)
+    m2.metric("Отправлено", len(df_l[df_l['Статус'] == 'Отправлено']) if not df_l.empty and 'Статус' in df_l.columns else 0)
+    m3.metric("Просмотрено", len(df_l[df_l['Статус'] == 'Просмотрено']) if not df_l.empty and 'Статус' in df_l.columns else 0)
+    m4.metric("Кликнули", len(df_l[df_l['Статус'] == 'Кликнул']) if not df_l.empty and 'Статус' in df_l.columns else 0)
     st.divider()
     if not df_l.empty and 'Статус' in df_l.columns:
         st.bar_chart(df_l['Статус'].value_counts())
