@@ -142,7 +142,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- НАСТРОЙКА ЮКААССЫ ИЗ SECRETS ---
 yookassa_configured = False
 try:
     if "YOOKASSA_SHOP_ID" in st.secrets and "YOOKASSA_SECRET_KEY" in st.secrets:
@@ -204,7 +203,8 @@ def generate_ai_offer_and_triggers(niche, city):
                 return parts[0].replace("---OFFER---", "").strip(), parts[1].strip()
             else:
                 return result_text, fallback_triggers
-        except Exception:
+        except Exception as e:
+            print(f"Gemini Error: {e}")
             return fallback_offer, fallback_triggers
 
 def init_db():
@@ -255,29 +255,6 @@ def get_limit_for_tier(tier):
     conn.close()
     return row[0] if row else 3
 
-def send_verification_email(to_email, token):
-    try:
-        sender_email = "denisastak@yandex.ru"
-        sender_pass = "lacpykduxmmgtige"
-        verify_url = f"https://leadforge-app.streamlit.app/?verify_token={token}"
-        
-        msg = MIMEMultipart()
-        msg["From"] = sender_email
-        msg["To"] = to_email
-        msg["Subject"] = "Подтверждение регистрации в LeadForge"
-        
-        body = f"Здравствуйте!\n\nДля активации вашего аккаунта в LeadForge перейдите по ссылке:\n{verify_url}\n\nЕсли вы не регистрировались, просто проигнорируйте это письмо."
-        msg.attach(MIMEText(body, "plain", "utf-8"))
-        
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.yandex.ru", 465, context=context) as server:
-            server.login(sender_email, sender_pass)
-            server.sendmail(sender_email, [to_email], msg.as_string())
-        return True
-    except Exception as e:
-        print(f"Ошибка отправки письма: {e}")
-        return False
-
 def register_user(username, password, email):
     conn = sqlite3.connect("saas_database.db")
     cursor = conn.cursor()
@@ -292,13 +269,11 @@ def register_user(username, password, email):
     
     cursor.execute("""
         INSERT INTO users (username, password, email, tier, sent_today, last_reset_date, is_verified, is_blocked, reset_token) 
-        VALUES (?, ?, ?, 'free', 0, ?, 0, 0, ?)
+        VALUES (?, ?, ?, 'free', 0, ?, 1, 0, ?)
     """, (username, hashed_pw, email, today_str, verify_token))
     conn.commit()
     conn.close()
-    
-    send_verification_email(email, verify_token)
-    return True, "Успешно! Проверьте почту для подтверждения аккаунта."
+    return True, "Успешно! Аккаунт создан."
 
 def get_user_info(username):
     if username == "admin":
@@ -338,13 +313,12 @@ def load_leads_from_db(username):
     df = pd.read_sql("SELECT channel AS 'Компания', email AS 'Email', status AS 'Статус' FROM user_leads WHERE username = ?", conn, params=(username,))
     conn.close()
     if df.empty:
-        df = pd.DataFrame(columns=["Компания", "Email", "Статус"])
+        df = pd.DataFrame([{"Компания": "Тестовая студия", "Email": "test-client@yandex.ru", "Статус": "В очереди"}])
     return df
 
 def save_leads_to_db(username, df):
     conn = sqlite3.connect("saas_database.db")
     cursor = conn.cursor()
-    # Сначала очистим старые лиды пользователя перед перезаписью актуальных из таблицы (для поддержки удаления)
     cursor.execute("DELETE FROM user_leads WHERE username = ?", (username,))
     for _, row in df.iterrows():
         email_val = str(row.get("Email", "")).strip()
@@ -353,7 +327,7 @@ def save_leads_to_db(username, df):
         cursor.execute("""
             INSERT OR IGNORE INTO user_leads (username, channel, email, status) 
             VALUES (?, ?, ?, ?)
-        """, (username, str(row.get("Компания", "")), email_val, str(row.get("Статус", "В очереди"))))
+        """, (username, str(row.get("Компания", "Партнер")), email_val, str(row.get("Статус", "В очереди"))))
     conn.commit()
     conn.close()
 
@@ -374,7 +348,6 @@ def remove_user_duplicates(username):
     conn.close()
     return deleted_count
 
-# --- СЕССИЯ И ПАРАМЕТРЫ URL ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "username" not in st.session_state:
@@ -388,45 +361,6 @@ if "stop_process" not in st.session_state:
 
 query_params = st.query_params
 
-# Обработка верификации email по ссылке
-if "verify_token" in query_params:
-    v_token = query_params["verify_token"]
-    conn = sqlite3.connect("saas_database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT username FROM users WHERE reset_token = ?", (v_token,))
-    res = cursor.fetchone()
-    if res:
-        cursor.execute("UPDATE users SET is_verified = 1, reset_token = NULL WHERE reset_token = ?", (v_token,))
-        conn.commit()
-        conn.close()
-        st.success("✅ Email успешно подтвержден! Теперь вы можете войти в систему.")
-    else:
-        st.error("❌ Недействительная или устаревшая ссылка подтверждения.")
-    conn.close()
-    st.stop()
-
-if "reset_token" in query_params:
-    token = query_params["reset_token"]
-    st.markdown("<h2 style='text-align: center;'>Сброс пароля</h2>", unsafe_allow_html=True)
-    with st.form("new_password_form"):
-        new_p1 = st.text_input("Новый пароль", type="password")
-        new_p2 = st.text_input("Подтвердите пароль", type="password")
-        if st.form_submit_button("Сохранить"):
-            if new_p1 and new_p1 == new_p2:
-                conn = sqlite3.connect("saas_database.db")
-                cursor = conn.cursor()
-                cursor.execute("UPDATE users SET password = ?, reset_token = NULL WHERE reset_token = ?", (hash_password(new_p1), token))
-                conn.commit()
-                conn.close()
-                st.success("Пароль изменен")
-                st.query_params.clear()
-                time.sleep(1.5)
-                st.rerun()
-            else:
-                st.error("Пароли не совпадают")
-    st.stop()
-
-# Обработка успешного возврата после оплаты ЮKassa
 if "success" in query_params and query_params["success"] == "true":
     target_tier = query_params.get("tier", "monthly")
     if st.session_state.authenticated:
@@ -451,7 +385,7 @@ if not st.session_state.authenticated:
         
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
-        auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
+        auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация"], horizontal=True)
         st.divider()
         
         if auth_mode == "Вход":
@@ -466,14 +400,12 @@ if not st.session_state.authenticated:
                         st.rerun()
                     conn = sqlite3.connect("saas_database.db")
                     cursor = conn.cursor()
-                    cursor.execute("SELECT password, is_blocked, is_verified FROM users WHERE username = ?", (l_user,))
+                    cursor.execute("SELECT password, is_blocked FROM users WHERE username = ?", (l_user,))
                     row = cursor.fetchone()
                     conn.close()
                     if row and row[0] == hash_password(l_pass):
                         if row[1] == 1:
                             st.error("Аккаунт заблокирован")
-                        elif row[2] == 0:
-                            st.error("Пожалуйста, подтвердите ваш email (проверьте почту).")
                         else:
                             st.session_state.authenticated = True
                             st.session_state.username = l_user
@@ -491,39 +423,15 @@ if not st.session_state.authenticated:
                     if r_user and r_pass and r_email:
                         success, msg = register_user(r_user, r_pass, r_email)
                         if success:
-                            st.success(msg)
+                            st.success(msg + " Теперь вы можете войти.")
                         else:
                             st.error(msg)
                     else:
-                        st.warning("Заполните поля")
-                        
-        elif auth_mode == "Сброс":
-            with st.form("forgot_form"):
-                f_email = st.text_input("Email для восстановления")
-                if st.form_submit_button("Отправить"):
-                    if f_email:
-                        conn = sqlite3.connect("saas_database.db")
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT username FROM users WHERE email = ?", (f_email,))
-                        res = cursor.fetchone()
-                        conn.close()
-                        if res:
-                            token = secrets.token_urlsafe(32)
-                            conn = sqlite3.connect("saas_database.db")
-                            cursor = conn.cursor()
-                            cursor.execute("UPDATE users SET reset_token = ? WHERE email = ?", (token, f_email))
-                            conn.commit()
-                            conn.close()
-                            st.success(f"Ссылка для сброса: ?reset_token={token}")
-                        else:
-                            st.error("Email не найден")
-                    else:
-                        st.warning("Введите email")
+                        st.warning("Заполните все поля")
                         
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
-# --- ШАПКА С ИНДИКАТОРОМ ЛИМИТОВ ---
 username = st.session_state.username
 tier, sent_today = get_user_info(username)
 daily_limit = get_limit_for_tier(tier)
@@ -573,7 +481,6 @@ if username == "admin":
     st.markdown("## Административная панель")
     conn = sqlite3.connect("saas_database.db")
     users_df = pd.read_sql("SELECT username, email, tier, sent_today, is_blocked FROM users", conn)
-    limits_df = pd.read_sql("SELECT tier AS 'Тариф', daily_limit AS 'Лимит' FROM tier_limits", conn)
     conn.close()
     
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
@@ -629,11 +536,11 @@ with tab_send:
                 ai_city = st.text_input("Город", value="Новочеркасск")
                 
             if st.button("Сгенерировать"):
-                with st.spinner("Генерация..."):
+                with st.spinner("Генерация предложений через ИИ..."):
                     new_offer, new_triggers = generate_ai_offer_and_triggers(ai_niche, ai_city)
                     st.session_state.ai_template = new_offer
                     st.session_state.auto_keywords = new_triggers
-                    st.success("Готово")
+                    st.success("Готово! Контент успешно сгенерирован.")
                     time.sleep(0.3)
                     st.rerun()
 
@@ -661,7 +568,7 @@ with tab_send:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.markdown("### Терминал")
         if "logs" not in st.session_state:
-            st.session_state.logs = ">>> Готов к работе.\n"
+            st.session_state.logs = ">>> Готов к работе. Нажмите Запуск.\n"
         log_box = st.empty()
         log_box.text_area("Logs", value=st.session_state.logs, height=450, disabled=True)
 
@@ -673,17 +580,24 @@ with tab_send:
             st.session_state.stop_process = False
             curr_tier, sent_today = get_user_info(username)
             limit = get_limit_for_tier(curr_tier)
+            
             if sent_today >= limit:
-                st.error("Лимит писем на сегодня исчерпан!")
+                add_log("❌ Лимит писем на сегодня исчерпан!")
             elif not yandex_email or not yandex_pass:
-                st.error("Заполните SMTP настройки")
+                add_log("❌ Ошибка: Заполните SMTP настройки (почту и пароль приложения) выше.")
             else:
+                add_log("🚀 Инициализация отправки...")
                 core = LeadForgeCore(yandex_email, yandex_pass)
                 
+                if 'leads_df' not in st.session_state or st.session_state.leads_df.empty:
+                    st.session_state.leads_df = load_leads_from_db(username)
+                
                 valid_leads_df = st.session_state.leads_df[
-                    st.session_state.leads_df['Email'].apply(is_valid_email) & 
-                    (~st.session_state.leads_df['Email'].str.contains('example.com', case=False, na=False))
+                    st.session_state.leads_df['Email'].apply(is_valid_email)
                 ]
+                
+                if valid_leads_df.empty:
+                    add_log("⚠️ В базе нет валидных email адресов для отправки!")
                 
                 for idx, row in valid_leads_df.iterrows():
                     if st.session_state.stop_process:
@@ -692,14 +606,14 @@ with tab_send:
                     
                     _, cur_sent = get_user_info(username)
                     if cur_sent >= limit:
-                        add_log("⚠️ Достигнут дневной лимит.")
+                        add_log("⚠️ Достигнут дневной лимит рассылки.")
                         break
                         
-                    email, status, comp_name = str(row.get("Email", "")), str(row.get("Статус", "")), str(row.get("Компания", "партнер"))
+                    email, status, comp_name = str(row.get("Email", "")), str(row.get("Статус", "")), str(row.get("Компания", "Партнер"))
                     
                     if status in ["В очереди", "Ошибка"]:
-                        add_log(f"Отправка: {email}...")
-                        raw_body = email_body.replace("{company_name}", comp_name).replace("{city}", ai_city)
+                        add_log(f"Отправка на {email}...")
+                        raw_body = email_body.replace("{company_name}", comp_name).replace("{city}", ai_city if 'ai_city' in locals() else "Вашем городе")
                         formatted_body = process_spintax(raw_body)
                         
                         success = core.send_email_from_web(
@@ -711,12 +625,16 @@ with tab_send:
                         save_leads_to_db(username, st.session_state.leads_df)
                         if success:
                             increment_sent_count(username)
+                            add_log(f"✅ Успешно отправлено: {email}")
+                        else:
+                            add_log(f"❌ Ошибка отправки: {email}")
                             
                         if st.session_state.stop_process:
                             add_log("🛑 Процесс остановлен пользователем.")
                             break
                             
                         time.sleep(4)
+                add_log("🏁 Рассылка завершена.")
         st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_sources:
@@ -766,9 +684,11 @@ with tab_crm:
             pass
 
     st.divider()
-    st.markdown("<p style='color:#94a3b8; font-size:0.85rem;'>Вы можете выделять ненужные строки в таблице и удалять их кнопкой Delete на клавиатуре или через контекстное меню таблицы.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#94a3b8; font-size:0.85rem;'>Вы можете выделять ненужные строки в таблице и удалять их клавишей Delete на клавиатуре.</p>", unsafe_allow_html=True)
     
-    # Таблица лидов с поддержкой удаления строк
+    if 'leads_df' not in st.session_state:
+        st.session_state.leads_df = load_leads_from_db(username)
+
     edited_df = st.data_editor(
         st.session_state.leads_df, 
         num_rows="dynamic", 
@@ -845,7 +765,7 @@ with tab_tariffs:
                 try:
                     p = Payment.create({
                         "amount": {"value": "4990.00", "currency": "RUB"},
-                        "confirmation": {"type": "redirect", "return_url": "https://leadforge-app.streamlit.app/?success=true&tier=lifetime"},
+                        "confirmation": {"type": "redirect", "return_url": "https://leadforge-app.verification.app/?success=true&tier=lifetime"},
                         "capture": True, "description": f"ULTRA подписка для {username}"
                     })
                     st.markdown(f'<meta http-equiv="refresh" content="0;url={p.confirmation.confirmation_url}">', unsafe_allow_html=True)
