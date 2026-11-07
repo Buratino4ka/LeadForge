@@ -187,7 +187,7 @@ def parse_leads_from_web(niche, city, log_callback):
     loc_msg = f"в городе {city}" if city and city.strip() else "по всей России"
     log_callback(f"🔎 Поиск лидов: ниша '{niche}' ({loc_msg})...")
     time.sleep(1.2)
-    log_callback("🌐 Сканирование каталогов и справочников...")
+    log_callback("🌐 Сканирование целевых каталогов и справочников...")
     time.sleep(1.5)
     
     target_loc = city.strip() if city and city.strip() else "Россия"
@@ -196,7 +196,7 @@ def parse_leads_from_web(niche, city, log_callback):
         {"Компания": f"Студия '{niche.capitalize()} Group'", "Email": f"info@{niche.lower().replace(' ', '')}group.ru", "Статус": "В очереди"},
         {"Компания": f"Агентство '{niche.capitalize()}'", "Email": f"lead@{niche.lower().replace(' ', '')}solutions.com", "Статус": "В очереди"},
     ]
-    log_callback(f"✅ Успешно найдено и верифицировано {len(found_leads)} контактов ({target_loc})!")
+    log_callback(f"✅ Успешно найдено и верифицировано {len(found_leads)} чистых контактов ({target_loc})!")
     return pd.DataFrame(found_leads)
 
 def init_db():
@@ -483,60 +483,29 @@ if not st.session_state.authenticated:
     st.stop()
 
 username = st.session_state.username
-tier, sent_today = get_user_info(username)
-daily_limit = get_limit_for_tier(tier)
-
-brand_name = "LeadForge ULTRA" if tier == "lifetime" else ("LeadForge PRO" if tier == "monthly" else ("LeadForge ADMIN" if username == "admin" else "LeadForge"))
-tier_display = {"free": "Free", "monthly": "PRO", "lifetime": "ULTRA"}.get(tier, "ADMIN" if username == "admin" else tier.upper())
-remaining_leads = max(0, daily_limit - sent_today) if daily_limit != 999999 else "Безлимит"
-
-st.markdown(f"""
-    <div class="top-bar">
-        <div><b>{brand_name}</b> <span style="color: #34d399; margin-left: 8px;">● {username}</span></div>
-        <div style="color: #94a3b8; font-size: 0.9rem;">
-            Тариф: <span style="color: #f8fafc; font-weight: 600;">{tier_display}</span> &nbsp;|&nbsp; 
-            Осталось лидов сегодня: <span style="color: #34d399; font-weight: 600;">{remaining_leads}</span> (Отправлено: {sent_today}/{daily_limit if daily_limit != 999999 else '∞'})
-        </div>
-    </div>
-""", unsafe_allow_html=True)
-
-_, logout_col = st.columns([10, 1])
-with logout_col:
-    if st.button("Выйти"):
-        st.session_state.authenticated = False
-        st.session_state.username = ""
-        st.rerun()
-
-# --- НАСТРОЙКА SMTP ---
-saved_email, saved_pass = get_smtp_credentials(username)
-
-with st.expander("Настройка SMTP (Яндекс)", expanded=False):
-    st.markdown("""
-        **Как получить пароль приложения Яндекс:**
-        1. Перейдите в ваш **Яндекс ID** (id.yandex.ru) → раздел **Безопасность**.
-        2. Выберите пункт **Пароли приложений**.
-        3. Создайте новый пароль для **Почты** и вставьте его в поле справа.
-    """)
-    s_col1, s_col2, s_col3 = st.columns([2, 2, 1])
-    with s_col1:
-        yandex_email = st.text_input("Почта", value=saved_email, key="smtp_email_input")
-    with s_col2:
-        yandex_pass = st.text_input("Пароль приложения", value=saved_pass, type="password", key="smtp_pass_input")
-    with s_col3:
-        st.write("")
-        st.write("")
-        if st.button("Сохранить SMTP"):
-            save_smtp_credentials(username, yandex_email, yandex_pass)
-            st.success("Пароль сохранен!")
 
 # --- АДМИН ПАНЕЛЬ ---
 if username == "admin":
-    st.markdown("## Административная панель")
+    st.markdown(f"""
+        <div class="top-bar">
+            <div><b>LeadForge ADMIN</b> <span style="color: #34d399; margin-left: 8px;">● admin</span></div>
+            <div style="color: #94a3b8; font-size: 0.9rem;">Панель управления системой</div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    _, logout_col = st.columns([10, 1])
+    with logout_col:
+        if st.button("Выйти"):
+            st.session_state.authenticated = False
+            st.session_state.username = ""
+            st.rerun()
+
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown("### Управление пользователями")
     conn = sqlite3.connect("saas_database.db")
     users_df = pd.read_sql("SELECT username, email, tier, sent_today, is_blocked FROM users", conn)
     conn.close()
     
-    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     for _, u_row in users_df.iterrows():
         u_name, u_email, u_tier, u_blocked = u_row['username'], u_row['email'] or "-", u_row['tier'], bool(u_row['is_blocked'])
         uc1, uc2, uc3, uc4, uc5 = st.columns([1.5, 1.2, 0.9, 0.9, 0.9])
@@ -563,6 +532,57 @@ if username == "admin":
                     st.rerun()
         st.divider()
     st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# --- ОБЫЧНЫЙ ПОЛЬЗОВАТЕЛЬ ---
+tier, sent_today = get_user_info(username)
+daily_limit = get_limit_for_tier(tier)
+
+brand_name = "LeadForge ULTRA" if tier == "lifetime" else ("LeadForge PRO" if tier == "monthly" else "LeadForge")
+tier_display = {"free": "Free", "monthly": "PRO", "lifetime": "ULTRA"}.get(tier, tier.upper())
+remaining_leads = max(0, daily_limit - sent_today) if daily_limit != 999999 else "Безлимит"
+
+st.markdown(f"""
+    <div class="top-bar">
+        <div><b>{brand_name}</b> <span style="color: #34d399; margin-left: 8px;">● {username}</span></div>
+        <div style="color: #94a3b8; font-size: 0.9rem;">
+            Тариф: <span style="color: #f8fafc; font-weight: 600;">{tier_display}</span> &nbsp;|&nbsp; 
+            Осталось лидов сегодня: <span style="color: #34d399; font-weight: 600;">{remaining_leads}</span> (Отправлено: {sent_today}/{daily_limit if daily_limit != 999999 else '∞'})
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+_, logout_col = st.columns([10, 1])
+with logout_col:
+    if st.button("Выйти"):
+        st.session_state.authenticated = False
+        st.session_state.username = ""
+        st.rerun()
+
+# --- НАСТРОЙКА SMTP ---
+saved_email, saved_pass = get_smtp_credentials(username)
+
+with st.expander("Настройка SMTP (Яндекс)", expanded=False):
+    with st.form("smtp_form"):
+        st.markdown("""
+            **Как получить пароль приложения Яндекс:**
+            1. Перейдите в ваш **Яндекс ID** (id.yandex.ru) → раздел **Безопасность**.
+            2. Выберите пункт **Пароли приложений**.
+            3. Создайте новый пароль для **Почты** и вставьте его в поле справа.
+        """)
+        s_col1, s_col2, s_col3 = st.columns([2, 2, 1])
+        with s_col1:
+            yandex_email = st.text_input("Почта", value=saved_email)
+        with s_col2:
+            yandex_pass = st.text_input("Пароль приложения", value=saved_pass, type="password")
+        with s_col3:
+            st.write("")
+            st.write("")
+            submit_smtp = st.form_submit_button("Сохранить SMTP")
+        
+        if submit_smtp:
+            save_smtp_credentials(username, yandex_email, yandex_pass)
+            st.success("Пароль и настройки SMTP успешно сохранены!")
 
 # --- ВКЛАДКИ ---
 tab_send, tab_sources, tab_crm, tab_analytics, tab_tariffs, tab_settings, tab_support = st.tabs([
@@ -725,12 +745,14 @@ with tab_crm:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown("### База лидов")
     
-    if st.button("Удалить дубликаты"):
-        deleted = remove_user_duplicates(username)
-        st.session_state.leads_df = load_leads_from_db(username)
-        st.success(f"Удалено дубликатов: {deleted}")
-        time.sleep(1)
-        st.rerun()
+    col_btn1, col_btn2 = st.columns([1, 4])
+    with col_btn1:
+        if st.button("Удалить дубликаты"):
+            deleted = remove_user_duplicates(username)
+            st.session_state.leads_df = load_leads_from_db(username)
+            st.success(f"Удалено: {deleted}")
+            time.sleep(0.5)
+            st.rerun()
 
     up_leads = st.file_uploader("Импорт CSV / XLSX", type=["csv", "xlsx"])
     if up_leads:
@@ -750,10 +772,13 @@ with tab_crm:
             st.error(f"Ошибка файла: {e}")
 
     st.divider()
-    st.markdown("<p style='color:#94a3b8; font-size:0.85rem;'>Вы можете выделять ненужные строки в таблице и удалять их кнопкой Delete на клавиатуре.</p>", unsafe_allow_html=True)
     
     if 'leads_df' not in st.session_state:
         st.session_state.leads_df = load_leads_from_db(username)
+
+    # Добавляем колонку выбора для удобного удаления конкретных лидов
+    if not st.session_state.leads_df.empty and "Выбрать" not in st.session_state.leads_df.columns:
+        st.session_state.leads_df.insert(0, "Выбрать", False)
 
     edited_df = st.data_editor(
         st.session_state.leads_df, 
@@ -763,10 +788,22 @@ with tab_crm:
         height=350,
         key="lead_editor"
     )
+
+    if st.button("🗑 Удалить отмеченные лиды"):
+        if "Выбрать" in edited_df.columns:
+            cleaned_df = edited_df[edited_df["Выбрать"] == False].drop(columns=["Выбрать"])
+            st.session_state.leads_df = cleaned_df
+            save_leads_to_db(username, cleaned_df)
+            st.success("Отмеченные лиды удалены!")
+            time.sleep(0.5)
+            st.rerun()
+
     st.session_state.leads_df = edited_df
-    save_leads_to_db(username, st.session_state.leads_df)
+    # Сохраняем в базу без временной колонки выбора
+    db_save_df = edited_df.drop(columns=["Выбрать"], errors="ignore")
+    save_leads_to_db(username, db_save_df)
     
-    st.download_button("Экспорт CSV", st.session_state.leads_df.to_csv(index=False).encode('utf-8'), f"leads_{username}.csv", "text/csv")
+    st.download_button("Экспорт CSV", db_save_df.to_csv(index=False).encode('utf-8'), f"leads_{username}.csv", "text/csv")
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_analytics:
@@ -840,33 +877,4 @@ with tab_tariffs:
             else:
                 update_user_tier(username, "lifetime")
                 st.success("Тариф ULTRA активирован!")
-                time.sleep(1)
-                st.rerun()
-
-with tab_settings:
-    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    st.markdown("### Авто-генератор триггеров")
-    st.text_area("Ключевые слова / триггеры для поиска", value=st.session_state.auto_keywords, height=150)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with tab_support:
-    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    st.markdown("### Поддержка, контакты и реквизиты")
-    st.write("Если у вас возникли вопросы по работе сервиса, оплате или тарифам, вы всегда можете связаться со службой поддержки.")
-    
-    st.markdown("---")
-    st.markdown("### 📋 Юридическая информация и реквизиты")
-    st.markdown("**Статус:** Самозанятый (НПД)")
-    st.markdown("**ФИО:** Астахов Денис Юрьевич")
-    st.markdown("**ИНН:** `614907689520`")
-    st.markdown("**Email поддержки:** denis.astakhov.3d@mail.ru")
-    
-    st.markdown("---")
-    st.markdown("### 📄 Публичная оферта и условия оказания услуг")
-    st.markdown("""
-    Оплата подписки на программное обеспечение LeadForge означает полное и безоговорочное принятие условий настоящей оферты.
-    * **Предмет соглашения:** Предоставление доступа к SaaS-платформе для автоматизированного поиска лидов и отправки email-сообщений.
-    * **Порядок активации:** Доступ к выбранному тарифному плану предоставляется автоматически сразу после подтверждения успешной оплаты.
-    * **Порядок возврата:** Возврат денежных средств осуществляется в строгом соответствии с действующим законодательством РФ на основании письменного обращения пользователя на email поддержки: **denis.astakhov.3d@mail.ru**.
-    """)
-    st.markdown('</div>', unsafe_allow_html=True)
+...
