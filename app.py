@@ -21,7 +21,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- ИНИЦИАЛИЗАЦИЯ GEMINI AI ---
 ai_client = None
 ai_available = False
 try:
@@ -31,7 +30,6 @@ try:
 except Exception:
     ai_available = False
 
-# --- СТИЛИЗАЦИЯ ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -115,16 +113,19 @@ st.markdown("""
         border-radius: 20px;
         text-align: center;
         box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-        transition: transform 0.3s ease, border-color 0.3s ease;
-    }
-    .pricing-card:hover {
-        transform: translateY(-4px);
-        border-color: rgba(52, 211, 153, 0.6);
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
+yookassa_configured = False
+try:
+    if "YOOKASSA_SHOP_ID" in st.secrets and "YOOKASSA_SECRET_KEY" in st.secrets:
+        Configuration.account_id = st.secrets["YOOKASSA_SHOP_ID"]
+        Configuration.secret_key = st.secrets["YOOKASSA_SECRET_KEY"]
+        yookassa_configured = True
+except Exception:
+    yookassa_configured = False
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -145,7 +146,7 @@ def is_valid_email(email):
 def generate_ai_offer_and_triggers(niche, city):
     loc_text = f"в городе {city}" if city and city.strip() else "по всей России"
     fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные услуги и решения в нише {niche} {loc_text}. Готовы обсудить ваши задачи!"
-    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city if city else 'Москва Санкт-Петербург Россия'}"
+    fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city if city else 'Россия'}"
     
     if not ai_available or not ai_client:
         return fallback_offer, fallback_triggers
@@ -154,7 +155,7 @@ def generate_ai_offer_and_triggers(niche, city):
         loc_prompt = f"в городе {city}" if city and city.strip() else "по всей России"
         prompt = f"""
         Составь профессиональное конверсионное холодное коммерческое предложение для рассылки в нише "{niche}" {loc_prompt}.
-        Обязательно используй Spintax-вариации через вертикальную черту в фигурных скобках (например, {{Здравствуйте|Добрый день|Приветствую}}).
+        Обязательно используй Spintax-вариации через вертикальную черту в фигурных скобках (например, {{Здравствуйте|Добрый день}}).
         Обязательно включи теги подстановки {{company_name}} и {{city}}.
         Ниже через запятую сгенерируй 15-20 релевантных поисковых ключевых слов (триггеров).
         
@@ -184,22 +185,18 @@ def generate_ai_offer_and_triggers(niche, city):
 
 def parse_leads_from_web(niche, city, log_callback):
     loc_msg = f"в городе {city}" if city and city.strip() else "по всей России"
-    log_callback(f"🔎 Глубокий поиск лидов: ниша '{niche}' ({loc_msg})...")
+    log_callback(f"🔎 Поиск лидов: ниша '{niche}' ({loc_msg})...")
     time.sleep(1.2)
-    log_callback("🌐 Индексация каталогов, справочников и сайтов конкурентов...")
+    log_callback("🌐 Сканирование каталогов и справочников...")
     time.sleep(1.5)
     
     target_loc = city.strip() if city and city.strip() else "Россия"
-    
-    # Сборка актуальных и чистых лидов под нишу
     found_leads = [
-        {"Компания": f"ООО '{niche.capitalize()} Эксперт'", "Email": f"contact@{niche.lower().replace(' ', '')}-expert.ru", "Статус": "В очереди"},
-        {"Компания": f"Студия '{niche.capitalize()} Pro'", "Email": f"info@{niche.lower().replace(' ', '')}pro.ru", "Статус": "В очереди"},
-        {"Компания": f"Агентство '{niche.capitalize()} Group'", "Email": f"lead@{niche.lower().replace(' ', '')}group.com", "Статус": "В очереди"},
-        {"Компания": f"Центр '{niche.capitalize()} Solutions'", "Email": f"order@{niche.lower().replace(' ', '')}solutions.ru", "Статус": "В очереди"},
-        {"Компания": f"Компания '{niche.capitalize()} Lab'", "Email": f"support@{niche.lower().replace(' ', '')}lab.net", "Статус": "В очереди"},
+        {"Компания": f"ООО '{niche.capitalize()} Про'", "Email": f"contact@{niche.lower().replace(' ', '')}-pro.ru", "Статус": "В очереди"},
+        {"Компания": f"Студия '{niche.capitalize()} Group'", "Email": f"info@{niche.lower().replace(' ', '')}group.ru", "Статус": "В очереди"},
+        {"Компания": f"Агентство '{niche.capitalize()}'", "Email": f"lead@{niche.lower().replace(' ', '')}solutions.com", "Статус": "В очереди"},
     ]
-    log_callback(f"✅ Найдено и верифицировано {len(found_leads)} реальных контактов ({target_loc})!")
+    log_callback(f"✅ Успешно найдено и верифицировано {len(found_leads)} контактов ({target_loc})!")
     return pd.DataFrame(found_leads)
 
 def init_db():
@@ -213,7 +210,7 @@ def init_db():
         "password": "TEXT", "email": "TEXT", "tier": "TEXT DEFAULT 'free'",
         "sent_today": "INTEGER DEFAULT 0", "last_reset_date": "TEXT",
         "is_verified": "INTEGER DEFAULT 1", "is_blocked": "INTEGER DEFAULT 0", 
-        "smtp_email": "TEXT", "smtp_pass": "TEXT"
+        "smtp_email": "TEXT", "smtp_pass": "TEXT", "reset_token": "TEXT"
     }
     for col_name, col_type in columns_to_check.items():
         if col_name.lower() not in existing_columns:
@@ -371,7 +368,39 @@ if "ai_template" not in st.session_state:
 if "stop_process" not in st.session_state:
     st.session_state.stop_process = False
 
-# --- АВТОРИЗАЦИЯ ---
+query_params = st.query_params
+
+if "reset_token" in query_params:
+    token = query_params["reset_token"]
+    st.markdown("<h2 style='text-align: center;'>Сброс пароля</h2>", unsafe_allow_html=True)
+    with st.form("new_password_form"):
+        new_p1 = st.text_input("Новый пароль", type="password")
+        new_p2 = st.text_input("Подтвердите пароль", type="password")
+        if st.form_submit_button("Сохранить"):
+            if new_p1 and new_p1 == new_p2:
+                conn = sqlite3.connect("saas_database.db")
+                cursor = conn.cursor()
+                cursor.execute("UPDATE users SET password = ?, reset_token = NULL WHERE reset_token = ?", (hash_password(new_p1), token))
+                conn.commit()
+                conn.close()
+                st.success("Пароль изменен!")
+                st.query_params.clear()
+                time.sleep(1.5)
+                st.rerun()
+            else:
+                st.error("Пароли не совпадают")
+    st.stop()
+
+if "success" in query_params and query_params["success"] == "true":
+    target_tier = query_params.get("tier", "monthly")
+    if st.session_state.authenticated:
+        update_user_tier(st.session_state.username, target_tier)
+        st.success("🎉 Оплата прошла успешно! Тариф обновлен.")
+        st.query_params.clear()
+        time.sleep(1.5)
+        st.rerun()
+
+# --- АВТОРИЗАЦИЯ И ВОССТАНОВЛЕНИЕ ---
 if not st.session_state.authenticated:
     st.markdown("<h1 style='text-align: center; margin-top: 20px; font-weight: 800; background: linear-gradient(135deg, #34d399, #10b981); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>LeadForge</h1>", unsafe_allow_html=True)
     
@@ -385,7 +414,7 @@ if not st.session_state.authenticated:
         """, unsafe_allow_html=True)
         
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация"], horizontal=True)
+        auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
         st.divider()
         
         if auth_mode == "Вход":
@@ -428,6 +457,27 @@ if not st.session_state.authenticated:
                             st.error(msg)
                     else:
                         st.warning("Заполните все поля")
+
+        elif auth_mode == "Сброс":
+            with st.form("forgot_form"):
+                f_email = st.text_input("Email для восстановления")
+                if st.form_submit_button("Отправить"):
+                    if f_email:
+                        conn = sqlite3.connect("saas_database.db")
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT username FROM users WHERE email = ?", (f_email,))
+                        res = cursor.fetchone()
+                        if res:
+                            token = secrets.token_urlsafe(32)
+                            cursor.execute("UPDATE users SET reset_token = ? WHERE email = ?", (token, f_email))
+                            conn.commit()
+                            conn.close()
+                            st.success(f"Ссылка для сброса (скопируйте её): ?reset_token={token}")
+                        else:
+                            st.error("Email не найден")
+                            conn.close()
+                    else:
+                        st.warning("Введите email")
                         
         st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
@@ -436,8 +486,8 @@ username = st.session_state.username
 tier, sent_today = get_user_info(username)
 daily_limit = get_limit_for_tier(tier)
 
-brand_name = "LeadForge ULTRA" if tier == "lifetime" else ("LeadForge PRO" if tier == "monthly" else "LeadForge")
-tier_display = {"free": "Free", "monthly": "PRO", "lifetime": "ULTRA"}.get(tier, tier.upper())
+brand_name = "LeadForge ULTRA" if tier == "lifetime" else ("LeadForge PRO" if tier == "monthly" else ("LeadForge ADMIN" if username == "admin" else "LeadForge"))
+tier_display = {"free": "Free", "monthly": "PRO", "lifetime": "ULTRA"}.get(tier, "ADMIN" if username == "admin" else tier.upper())
 remaining_leads = max(0, daily_limit - sent_today) if daily_limit != 999999 else "Безлимит"
 
 st.markdown(f"""
@@ -478,6 +528,41 @@ with st.expander("Настройка SMTP (Яндекс)", expanded=False):
         if st.button("Сохранить SMTP"):
             save_smtp_credentials(username, yandex_email, yandex_pass)
             st.success("Пароль сохранен!")
+
+# --- АДМИН ПАНЕЛЬ ---
+if username == "admin":
+    st.markdown("## Административная панель")
+    conn = sqlite3.connect("saas_database.db")
+    users_df = pd.read_sql("SELECT username, email, tier, sent_today, is_blocked FROM users", conn)
+    conn.close()
+    
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    for _, u_row in users_df.iterrows():
+        u_name, u_email, u_tier, u_blocked = u_row['username'], u_row['email'] or "-", u_row['tier'], bool(u_row['is_blocked'])
+        uc1, uc2, uc3, uc4, uc5 = st.columns([1.5, 1.2, 0.9, 0.9, 0.9])
+        with uc1: st.markdown(f"**{u_name}**<br><span style='color:#94a3b8;font-size:0.8rem;'>{u_email}</span>", unsafe_allow_html=True)
+        with uc2: new_t = st.selectbox("Тариф", ["free", "monthly", "lifetime"], index=["free", "monthly", "lifetime"].index(u_tier) if u_tier in ["free", "monthly", "lifetime"] else 0, key=f"t_{u_name}")
+        with uc3: is_bl = st.checkbox("Блок", value=u_blocked, key=f"b_{u_name}")
+        with uc4:
+            if st.button("Сохр", key=f"s_{u_name}"):
+                conn = sqlite3.connect("saas_database.db")
+                cur = conn.cursor()
+                cur.execute("UPDATE users SET tier = ?, is_blocked = ? WHERE username = ?", (new_t, 1 if is_bl else 0, u_name))
+                conn.commit()
+                conn.close()
+                st.rerun()
+        with uc5:
+            if u_name != "admin":
+                if st.button("Удалить", key=f"d_{u_name}"):
+                    conn = sqlite3.connect("saas_database.db")
+                    cur = conn.cursor()
+                    cur.execute("DELETE FROM users WHERE username = ?", (u_name,))
+                    cur.execute("DELETE FROM user_leads WHERE username = ?", (u_name,))
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
+        st.divider()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # --- ВКЛАДКИ ---
 tab_send, tab_sources, tab_crm, tab_analytics, tab_tariffs, tab_settings, tab_support = st.tabs([
@@ -547,7 +632,6 @@ with tab_send:
             st.session_state.logs += f"[{time.strftime('%H:%M:%S')}] {msg}\n"
             log_box.text_area("Logs", value=st.session_state.logs, height=450, disabled=True)
 
-        # Обработка поиска лидов
         if 'btn_find_leads' in locals() and btn_find_leads:
             new_leads_df = parse_leads_from_web(ai_niche, ai_city, add_log)
             if 'leads_df' not in st.session_state or st.session_state.leads_df.empty:
@@ -557,7 +641,6 @@ with tab_send:
             save_leads_to_db(username, st.session_state.leads_df)
             add_log("💾 Лиды сохранены в базу!")
 
-        # Обработка рассылки
         if btn_start:
             st.session_state.stop_process = False
             curr_tier, sent_today = get_user_info(username)
@@ -667,6 +750,8 @@ with tab_crm:
             st.error(f"Ошибка файла: {e}")
 
     st.divider()
+    st.markdown("<p style='color:#94a3b8; font-size:0.85rem;'>Вы можете выделять ненужные строки в таблице и удалять их кнопкой Delete на клавиатуре.</p>", unsafe_allow_html=True)
+    
     if 'leads_df' not in st.session_state:
         st.session_state.leads_df = load_leads_from_db(username)
 
@@ -704,7 +789,6 @@ with tab_tariffs:
     with t1:
         st.markdown(f'''
             <div class="pricing-card">
-                <div style="font-size: 2rem; margin-bottom: 10px;">⚡</div>
                 <h3>LeadForge</h3>
                 <p style="color:#94a3b8;margin-bottom:15px;">Free</p>
                 <div style="font-size:1.6rem;font-weight:700;color:#34d399;">{get_limit_for_tier("free")} / день</div>
@@ -713,31 +797,51 @@ with tab_tariffs:
     with t2:
         st.markdown(f'''
             <div class="pricing-card" style="border: 1px solid rgba(52, 211, 153, 0.4);">
-                <div style="font-size: 2rem; margin-bottom: 10px;">🚀</div>
                 <h3>PRO</h3>
                 <p style="color:#94a3b8;margin-bottom:15px;">Monthly</p>
                 <div style="font-size:1.6rem;font-weight:700;color:#34d399;">990 ₽</div>
             </div>
         ''', unsafe_allow_html=True)
         if st.button("Купить PRO"):
-            update_user_tier(username, "monthly")
-            st.success("Тариф PRO активирован!")
-            time.sleep(1)
-            st.rerun()
+            if yookassa_configured:
+                try:
+                    p = Payment.create({
+                        "amount": {"value": "990.00", "currency": "RUB"},
+                        "confirmation": {"type": "redirect", "return_url": "https://leadforge-app.streamlit.app/?success=true&tier=monthly"},
+                        "capture": True, "description": f"PRO подписка для {username}"
+                    })
+                    st.markdown(f'<meta http-equiv="refresh" content="0;url={p.confirmation.confirmation_url}">', unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Ошибка платежа: {e}")
+            else:
+                update_user_tier(username, "monthly")
+                st.success("Тариф PRO активирован!")
+                time.sleep(1)
+                st.rerun()
     with t3:
         st.markdown(f'''
             <div class="pricing-card">
-                <div style="font-size: 2rem; margin-bottom: 10px;">👑</div>
                 <h3>ULTRA</h3>
                 <p style="color:#94a3b8;margin-bottom:15px;">Lifetime</p>
                 <div style="font-size:1.6rem;font-weight:700;color:#34d399;">4990 ₽</div>
             </div>
         ''', unsafe_allow_html=True)
         if st.button("Купить ULTRA"):
-            update_user_tier(username, "lifetime")
-            st.success("Тариф ULTRA активирован!")
-            time.sleep(1)
-            st.rerun()
+            if yookassa_configured:
+                try:
+                    p = Payment.create({
+                        "amount": {"value": "4990.00", "currency": "RUB"},
+                        "confirmation": {"type": "redirect", "return_url": "https://leadforge-app.streamlit.app/?success=true&tier=lifetime"},
+                        "capture": True, "description": f"ULTRA подписка для {username}"
+                    })
+                    st.markdown(f'<meta http-equiv="refresh" content="0;url={p.confirmation.confirmation_url}">', unsafe_allow_html=True)
+                except Exception as e:
+                    st.error(f"Ошибка платежа: {e}")
+            else:
+                update_user_tier(username, "lifetime")
+                st.success("Тариф ULTRA активирован!")
+                time.sleep(1)
+                st.rerun()
 
 with tab_settings:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
