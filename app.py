@@ -440,13 +440,14 @@ if not st.session_state.authenticated:
     
     _, col_center, _ = st.columns([1, 1.2, 1])
     with col_center:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         st.markdown("""
-            <div style="text-align: center; margin-bottom: 22px;">
+            <div style="text-align: center; margin-bottom: 20px;">
                 <span style="color: #34d399; font-size: 1.05rem; font-weight: 700;">LeadForge SaaS Platform</span><br>
                 <span style="color: #94a3b8; font-size: 0.85rem;">Автоматизированный поиск лидов и генерация рассылок</span>
             </div>
         """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
         
         auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
         st.divider()
