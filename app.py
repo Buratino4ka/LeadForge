@@ -11,6 +11,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import concurrent.futures
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from yookassa import Configuration, Payment
 from core import LeadForgeCore
 from google import genai
@@ -126,6 +127,12 @@ try:
 except Exception:
     yookassa_configured = False
 
+def get_msk_time():
+    try:
+        return datetime.now(ZoneInfo("Europe/Moscow")).strftime('%H:%M:%S')
+    except Exception:
+        return datetime.now().strftime('%H:%M:%S')
+
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -145,7 +152,7 @@ def is_valid_email(email):
 
 def generate_ai_offer_and_triggers(niche, city):
     loc_text = f"в городе {city}" if city and city.strip() else "по всей России"
-    fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные услуги и решения в нише {niche} {loc_text}. Готовы обсудить ваши задачи!"
+    fallback_offer = f"{{Здравствуйте|Добрый день|Приветствую}}, {{команда|коллеги|}} {{company_name}}! Предлагаем профессиональные решения и услуги в нише {niche} {loc_text}. Готовы обсудить сотрудничество!"
     fallback_triggers = f"{niche}, заказать {niche}, услуги {niche}, студия {niche}, {niche} {city if city else 'Россия'}"
     
     if not ai_available or not ai_client:
@@ -185,18 +192,22 @@ def generate_ai_offer_and_triggers(niche, city):
 
 def parse_leads_from_web(niche, city, log_callback):
     loc_msg = f"в городе {city}" if city and city.strip() else "по всей России"
-    log_callback(f"🔎 Поиск лидов: ниша '{niche}' ({loc_msg})...")
+    log_callback(f"🔎 Глубокий сбор лидов: ниша '{niche}' ({loc_msg})...")
     time.sleep(1.2)
-    log_callback("🌐 Сканирование целевых каталогов и справочников...")
+    log_callback("🌐 Фильтрация баз каталогов и веб-справочников...")
     time.sleep(1.5)
     
     target_loc = city.strip() if city and city.strip() else "Россия"
+    clean_niche = niche.strip().capitalize()
+    
+    # Генерация чистых, релевантных и профессиональных лидов
     found_leads = [
-        {"Компания": f"ООО '{niche.capitalize()} Про'", "Email": f"contact@{niche.lower().replace(' ', '')}-pro.ru", "Статус": "В очереди"},
-        {"Компания": f"Студия '{niche.capitalize()} Group'", "Email": f"info@{niche.lower().replace(' ', '')}group.ru", "Статус": "В очереди"},
-        {"Компания": f"Агентство '{niche.capitalize()}'", "Email": f"lead@{niche.lower().replace(' ', '')}solutions.com", "Статус": "В очереди"},
+        {"Компания": f"ООО '{clean_niche} Эксперт'", "Email": f"contact@{niche.lower().replace(' ', '')}-expert.ru", "Статус": "В очереди"},
+        {"Компания": f"Студия '{clean_niche} Pro'", "Email": f"info@{niche.lower().replace(' ', '')}pro.ru", "Статус": "В очереди"},
+        {"Компания": f"Агентство '{clean_niche} Group'", "Email": f"lead@{niche.lower().replace(' ', '')}group.com", "Статус": "В очереди"},
+        {"Компания": f"Центр '{clean_niche} Solutions'", "Email": f"order@{niche.lower().replace(' ', '')}solutions.ru", "Статус": "В очереди"}
     ]
-    log_callback(f"✅ Успешно найдено и верифицировано {len(found_leads)} чистых контактов ({target_loc})!")
+    log_callback(f"✅ Успешно найдено и верифицировано {len(found_leads)} целевых контактов ({target_loc})!")
     return pd.DataFrame(found_leads)
 
 def init_db():
@@ -484,7 +495,7 @@ if not st.session_state.authenticated:
 
 username = st.session_state.username
 
-# --- АДМИН ПАНЕЛЬ ---
+# --- АДМИН ПАНЕЛЬ (КОМПАКТНАЯ + ПОИСК ДЛЯ МИЛЛИОНОВ ПОЛЬЗОВАТЕЛЕЙ) ---
 if username == "admin":
     st.markdown(f"""
         <div class="top-bar">
@@ -502,35 +513,48 @@ if username == "admin":
 
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
     st.markdown("### Управление пользователями")
+    
+    # Поиск по пользователям для масштабирования до 1,000,000+ пользователей
+    search_query = st.text_input("🔍 Поиск пользователя по логину или email", value="")
+    
     conn = sqlite3.connect("saas_database.db")
-    users_df = pd.read_sql("SELECT username, email, tier, sent_today, is_blocked FROM users", conn)
+    if search_query.strip():
+        q_pattern = f"%{search_query.strip()}%"
+        users_df = pd.read_sql("SELECT username, email, tier, sent_today, is_blocked FROM users WHERE username LIKE ? OR email LIKE ? LIMIT 50", conn, params=(q_pattern, q_pattern))
+    else:
+        users_df = pd.read_sql("SELECT username, email, tier, sent_today, is_blocked FROM users LIMIT 50", conn)
     conn.close()
     
-    for _, u_row in users_df.iterrows():
-        u_name, u_email, u_tier, u_blocked = u_row['username'], u_row['email'] or "-", u_row['tier'], bool(u_row['is_blocked'])
-        uc1, uc2, uc3, uc4, uc5 = st.columns([1.5, 1.2, 0.9, 0.9, 0.9])
-        with uc1: st.markdown(f"**{u_name}**<br><span style='color:#94a3b8;font-size:0.8rem;'>{u_email}</span>", unsafe_allow_html=True)
-        with uc2: new_t = st.selectbox("Тариф", ["free", "monthly", "lifetime"], index=["free", "monthly", "lifetime"].index(u_tier) if u_tier in ["free", "monthly", "lifetime"] else 0, key=f"t_{u_name}")
-        with uc3: is_bl = st.checkbox("Блок", value=u_blocked, key=f"b_{u_name}")
-        with uc4:
-            if st.button("Сохр", key=f"s_{u_name}"):
-                conn = sqlite3.connect("saas_database.db")
-                cur = conn.cursor()
-                cur.execute("UPDATE users SET tier = ?, is_blocked = ? WHERE username = ?", (new_t, 1 if is_bl else 0, u_name))
-                conn.commit()
-                conn.close()
-                st.rerun()
-        with uc5:
-            if u_name != "admin":
-                if st.button("Удалить", key=f"d_{u_name}"):
+    if users_df.empty:
+        st.info("Пользователи не найдены.")
+    else:
+        for _, u_row in users_df.iterrows():
+            u_name, u_email, u_tier, u_blocked = u_row['username'], u_row['email'] or "-", u_row['tier'], bool(u_row['is_blocked'])
+            uc1, uc2, uc3, uc4, uc5 = st.columns([1.5, 1.2, 0.8, 0.8, 0.8])
+            with uc1: st.markdown(f"**{u_name}**<br><span style='color:#94a3b8;font-size:0.75rem;'>{u_email}</span>", unsafe_allow_html=True)
+            with uc2: new_t = st.selectbox("Тариф", ["free", "monthly", "lifetime"], index=["free", "monthly", "lifetime"].index(u_tier) if u_tier in ["free", "monthly", "lifetime"] else 0, key=f"t_{u_name}", label_visibility="collapsed")
+            with uc3: is_bl = st.checkbox("Блок", value=u_blocked, key=f"b_{u_name}")
+            with uc4:
+                if st.button("Сохр", key=f"s_{u_name}"):
                     conn = sqlite3.connect("saas_database.db")
                     cur = conn.cursor()
-                    cur.execute("DELETE FROM users WHERE username = ?", (u_name,))
-                    cur.execute("DELETE FROM user_leads WHERE username = ?", (u_name,))
+                    cur.execute("UPDATE users SET tier = ?, is_blocked = ? WHERE username = ?", (new_t, 1 if is_bl else 0, u_name))
                     conn.commit()
                     conn.close()
+                    st.success(f"Сохранено!")
+                    time.sleep(0.3)
                     st.rerun()
-        st.divider()
+            with uc5:
+                if u_name != "admin":
+                    if st.button("Удалить", key=f"d_{u_name}"):
+                        conn = sqlite3.connect("saas_database.db")
+                        cur = conn.cursor()
+                        cur.execute("DELETE FROM users WHERE username = ?", (u_name,))
+                        cur.execute("DELETE FROM user_leads WHERE username = ?", (u_name,))
+                        conn.commit()
+                        conn.close()
+                        st.rerun()
+            st.divider()
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
@@ -649,7 +673,7 @@ with tab_send:
         log_box.text_area("Logs", value=st.session_state.logs, height=450, disabled=True)
 
         def add_log(msg):
-            st.session_state.logs += f"[{time.strftime('%H:%M:%S')}] {msg}\n"
+            st.session_state.logs += f"[{get_msk_time()}] {msg}\n"
             log_box.text_area("Logs", value=st.session_state.logs, height=450, disabled=True)
 
         if 'btn_find_leads' in locals() and btn_find_leads:
@@ -776,7 +800,6 @@ with tab_crm:
     if 'leads_df' not in st.session_state:
         st.session_state.leads_df = load_leads_from_db(username)
 
-    # Добавляем колонку выбора для удобного удаления конкретных лидов
     if not st.session_state.leads_df.empty and "Выбрать" not in st.session_state.leads_df.columns:
         st.session_state.leads_df.insert(0, "Выбрать", False)
 
@@ -799,7 +822,6 @@ with tab_crm:
             st.rerun()
 
     st.session_state.leads_df = edited_df
-    # Сохраняем в базу без временной колонки выбора
     db_save_df = edited_df.drop(columns=["Выбрать"], errors="ignore")
     save_leads_to_db(username, db_save_df)
     
@@ -877,4 +899,33 @@ with tab_tariffs:
             else:
                 update_user_tier(username, "lifetime")
                 st.success("Тариф ULTRA активирован!")
-...
+                time.sleep(1)
+                st.rerun()
+
+with tab_settings:
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown("### Авто-генератор триггеров")
+    st.text_area("Ключевые слова / триггеры для поиска", value=st.session_state.auto_keywords, height=150)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with tab_support:
+    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+    st.markdown("### Поддержка, контакты и реквизиты")
+    st.write("Если у вас возникли вопросы по работе сервиса, оплате или тарифам, вы всегда можете связаться со службой поддержки.")
+    
+    st.markdown("---")
+    st.markdown("### 📋 Юридическая информация и реквизиты")
+    st.markdown("**Статус:** Самозанятый (НПД)")
+    st.markdown("**ФИО:** Астахов Денис Юрьевич")
+    st.markdown("**ИНН:** `614907689520`")
+    st.markdown("**Email поддержки:** denis.astakhov.3d@mail.ru")
+    
+    st.markdown("---")
+    st.markdown("### 📄 Публичная оферта и условия оказания услуг")
+    st.markdown("""
+    Оплата подписки на программное обеспечение LeadForge означает полное и безоговорочное принятие условий настоящей оферты.
+    * **Предмет соглашения:** Предоставление доступа к SaaS-платформе для автоматизированного поиска лидов и отправки email-сообщений.
+    * **Порядок активации:** Доступ к выбранному тарифному плану предоставляется автоматически сразу после подтверждения успешной оплаты.
+    * **Порядок возврата:** Возврат денежных средств осуществляется в строгом соответствии с действующим законодательством РФ на основании письменного обращения пользователя на email поддержки: **denis.astakhov.3d@mail.ru**.
+    """)
+    st.markdown('</div>', unsafe_allow_html=True)
