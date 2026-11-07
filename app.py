@@ -388,7 +388,7 @@ if not st.session_state.authenticated:
     _, col_center, _ = st.columns([1, 1.2, 1])
     with col_center:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        auth_mode = st.radio("Режим", ["Вход", "Регистрация", "Сброс"], horizontal=True, label_visibility="collapsed")
+        auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
         st.divider()
         
         if auth_mode == "Вход":
@@ -618,7 +618,7 @@ with tab_send:
             else:
                 core = LeadForgeCore(yandex_email, yandex_pass)
                 
-                # Фильтрация валидных лидов (без тестовых example.com и дублей некорректных почт)
+                # Фильтрация валидных лидов (исключение тестовых example.com)
                 valid_leads_df = st.session_state.leads_df[
                     st.session_state.leads_df['Email'].apply(is_valid_email) & 
                     (~st.session_state.leads_df['Email'].str.contains('example.com', case=False, na=False))
@@ -647,7 +647,6 @@ with tab_send:
                             file_bytes=file_bytes, file_name=file_name, log_callback=add_log
                         )
                         
-                        # Обновляем статус в основной таблице по индексу исходного датафрейма
                         st.session_state.leads_df.at[idx, "Статус"] = "Отправлено" if success else "Ошибка"
                         save_leads_to_db(username, st.session_state.leads_df)
                         if success:
