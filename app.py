@@ -441,7 +441,12 @@ if not st.session_state.authenticated:
     _, col_center, _ = st.columns([1, 1.2, 1])
     with col_center:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #94a3b8; font-size: 0.95rem; margin-bottom: 20px;'>Автоматизированная SaaS-платформа для поиска лидов и генерации рассылок</p>", unsafe_allow_html=True)
+        st.markdown("""
+            <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); padding: 12px; border-radius: 12px; text-align: center; margin-bottom: 20px;">
+                <span style="color: #34d399; font-size: 0.9rem; font-weight: 600;">Автоматизированная SaaS-платформа</span><br>
+                <span style="color: #94a3b8; font-size: 0.8rem;">для поиска лидов и генерации рассылок</span>
+            </div>
+        """, unsafe_allow_html=True)
         
         auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
         st.divider()
