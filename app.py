@@ -186,7 +186,7 @@ def generate_ai_offer_and_triggers(niche, city):
         [Триггеры через запятую]
         """
         response = ai_client.models.generate_content(
-            model='gemini-3.8-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
         )
         return response.text.strip()
@@ -469,7 +469,6 @@ daily_limit = get_limit_for_tier(tier)
 brand_name = "LeadForge ULTRA" if tier == "lifetime" else ("LeadForge PRO" if tier == "monthly" else "LeadForge")
 tier_display = {"free": "Free", "monthly": "PRO", "lifetime": "ULTRA"}.get(tier, tier.upper())
 
-# Расчет остатка лидов
 remaining_leads = max(0, daily_limit - sent_today) if daily_limit != 999999 else "Безлимит"
 progress_val = min(1.0, sent_today / daily_limit) if daily_limit != 999999 else 0.0
 
@@ -483,7 +482,6 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
-# Прогресс-бар лимитов
 if daily_limit != 999999:
     st.progress(progress_val, text=f"Лимит рассылки на сегодня: использовано {sent_today} из {daily_limit} писем")
 
@@ -731,7 +729,7 @@ with tab_tariffs:
                 try:
                     p = Payment.create({
                         "amount": {"value": "990.00", "currency": "RUB"},
-                        "confirmation": {"type": "redirect", "return_url": "http://localhost:8501/?success=true&tier=monthly"},
+                        "confirmation": {"type": "redirect", "return_url": "https://leadforge-app.streamlit.app/?success=true&tier=monthly"},
                         "capture": True, "description": f"PRO подписка для {username}"
                     })
                     st.markdown(f'<meta http-equiv="refresh" content="0;url={p.confirmation.confirmation_url}">', unsafe_allow_html=True)
@@ -747,7 +745,7 @@ with tab_tariffs:
             <div class="pricing-card">
                 <h3>ULTRA</h3>
                 <p style="color:#94a3b8;margin-bottom:15px;">Lifetime</p>
-                <div style="font-size:1.6rem;font-weight:700;color:#60a5fa;">4990 ₽</div>
+                <div style="font-size:1.6rem;font-weight:700;color:#34d399;">4990 ₽</div>
             </div>
         ''', unsafe_allow_html=True)
         if st.button("Купить ULTRA"):
@@ -755,7 +753,7 @@ with tab_tariffs:
                 try:
                     p = Payment.create({
                         "amount": {"value": "4990.00", "currency": "RUB"},
-                        "confirmation": {"type": "redirect", "return_url": "http://localhost:8501/?success=true&tier=lifetime"},
+                        "confirmation": {"type": "redirect", "return_url": "https://leadforge-app.streamlit.app/?success=true&tier=lifetime"},
                         "capture": True, "description": f"ULTRA подписка для {username}"
                     })
                     st.markdown(f'<meta http-equiv="refresh" content="0;url={p.confirmation.confirmation_url}">', unsafe_allow_html=True)
@@ -769,12 +767,28 @@ with tab_tariffs:
 
 with tab_settings:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    st.markdown("### Триггеры")
-    st.session_state.auto_keywords = st.text_area("Ключевые слова", value=st.session_state.auto_keywords, height=180)
+    st.markdown("### Авто-генератор триггеров")
+    st.text_area("Ключевые слова / триггеры для поиска", value=st.session_state.auto_keywords, height=150)
     st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_support:
     st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    st.markdown("### Поддержка")
-    st.markdown("Email: `denis.astakhov.3d@mail.ru`<br>Telegram: `@moumou132`", unsafe_allow_html=True)
+    st.markdown("### Поддержка, контакты и реквизиты")
+    st.write("Если у вас возникли вопросы по работе сервиса, оплате или тарифам, вы всегда можете связаться со службой поддержки.")
+    
+    st.markdown("---")
+    st.markdown("### 📋 Юридическая информация и реквизиты")
+    st.markdown("**Статус:** Самозанятый (НПД)")
+    st.markdown("**ФИО:** Астахов Денис Юрьевич")
+    st.markdown("**ИНН:** `614907689520`")
+    st.markdown("**Email поддержки:** denis.astakhov.3d@mail.ru")
+    
+    st.markdown("---")
+    st.markdown("### 📄 Публичная оферта и условия оказания услуг")
+    st.markdown("""
+    Оплата подписки на программное обеспечение LeadForge означает полное и безоговорочное принятие условий настоящей оферты.
+    * **Предмет соглашения:** Предоставление доступа к SaaS-платформе для автоматизированного поиска лидов и отправки email-сообщений.
+    * **Порядок активации:** Доступ к выбранному тарифному плану предоставляется автоматически сразу после подтверждения успешной оплаты.
+    * **Порядок возврата:** Возврат денежных средств осуществляется в строгом соответствии с действующим законодательством РФ на основании письменного обращения пользователя на email поддержки: **denis.astakhov.3d@mail.ru**.
+    """)
     st.markdown('</div>', unsafe_allow_html=True)
