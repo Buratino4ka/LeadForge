@@ -388,6 +388,8 @@ if not st.session_state.authenticated:
     _, col_center, _ = st.columns([1, 1.2, 1])
     with col_center:
         st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #94a3b8; font-size: 0.95rem; margin-bottom: 20px;'>Автоматизированная SaaS-платформа для поиска лидов и генерации рассылок</p>", unsafe_allow_html=True)
+        
         auth_mode = st.radio("Выберите режим работы", ["Вход", "Регистрация", "Сброс"], horizontal=True)
         st.divider()
         
@@ -625,7 +627,6 @@ with tab_send:
                 ]
                 
                 for idx, row in valid_leads_df.iterrows():
-                    # Быстрая проверка флага остановки
                     if st.session_state.stop_process:
                         add_log("🛑 Процесс остановлен пользователем.")
                         break
@@ -652,7 +653,6 @@ with tab_send:
                         if success:
                             increment_sent_count(username)
                             
-                        # Повторная проверка перед паузой для мгновенного отклика на кнопку Стоп
                         if st.session_state.stop_process:
                             add_log("🛑 Процесс остановлен пользователем.")
                             break
